@@ -1,0 +1,193 @@
+# ============================================================
+#  RedNacionalSalud: publicar la web en cPanel por FTP (lftp mirror)
+#  Basado en el workflow de radiologonacional (mismo hosting LinkXpace).
+#
+#  Cada push a main compila la web (con las variables de Supabase) y sube
+#  dist/ a public_html, incluido .htaccess. Tambien se puede lanzar a mano
+#  desde la pestana Actions.
+#
+#  Se usa lftp en lugar de la accion FTP-Deploy porque el FTPS de este
+#  hosting corta la conexion de datos ("ECONNRESET (data socket)"): el
+#  cortafuegos no abre los puertos pasivos cuando el canal de control va
+#  cifrado. El job prueba primero FTPS; si el canal de datos no responde,
+#  publica por FTP sin cifrar. lftp reconecta y reintenta cada archivo, sube
+#  de uno en uno en modo pasivo, y el paso entero se repite hasta tres veces.
+#
+#  Nunca borra nada del servidor: mirror sin --delete solo sube o sustituye
+#  archivos de dist/. No toca _respaldo_inicial, cgi-bin, .well-known ni
+#  .user.ini (lo genera cPanel): quedan fuera de la subida.
+#
+#  ATENCION: el hosting bloquea el FTP cada 28 dias. Si el job falla con un
+#  error de conexion o de autenticacion, desbloquearlo en el panel del
+#  hosting ("FTP bloqueado") y relanzar con "Re-run jobs".
+#
+#  Secrets (Settings > Secrets and variables > Actions):
+#    FTP_SERVER               ftp.rednacionalsalud.com
+#    FTP_USERNAME             usuario FTP del cPanel (rednacionalsalud.com)
+#    FTP_PASSWORD             su contrasena
+#    VITE_SUPABASE_URL        URL del proyecto Supabase
+#    VITE_SUPABASE_ANON_KEY   anon / publishable key (publica, NO la service_role)
+# ============================================================
+
+name: Publicar en cPanel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      protocolo:
+        description: 'auto (prueba FTPS y, si el canal de datos falla, usa ftp), ftps o ftp'
+        default: auto
+        type: choice
+        options: [auto, ftps, ftp]
+      carpeta:
+        description: 'Carpeta remota (./ si el usuario FTP ya apunta a public_html)'
+        default: public_html/
+        type: string
+
+concurrency:
+  group: publicar-cpanel-rns
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    name: Compilar y subir por FTP
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v6
+
+      - name: Preparar Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Sin estas variables la web se compila en modo demostracion (sin base de
+      # datos): en produccion eso no debe publicarse nunca, por eso se detiene.
+      - name: Compilar la web
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error title=Faltan secrets de Supabase::Define VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          npm run build
+          test -f dist/.htaccess || { echo "::error::dist/.htaccess no se genero"; exit 1; }
+          test -f dist/index.html || { echo "::error::dist/index.html no se genero"; exit 1; }
+
+      - name: Instalar lftp
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      - name: Subir dist/ a public_html
+        id: ftp
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          # lftp la lee de LFTP_PASSWORD: asi no pasa por la linea de comandos
+          LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          PROTOCOLO: ${{ github.event.inputs.protocolo || 'auto' }}
+          CARPETA: ${{ github.event.inputs.carpeta || 'public_html/' }}
+        run: |
+          if [ -z "$FTP_SERVER" ] || [ -z "$FTP_USERNAME" ] || [ -z "$LFTP_PASSWORD" ]; then
+            echo "::error title=Faltan secrets::Define FTP_SERVER, FTP_USERNAME y FTP_PASSWORD en Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+          # Ajustes de FTPS explicito (control y datos cifrados). El certificado
+          # del hosting llega con la cadena incompleta, por eso no se verifica.
+          FTPS="set ftp:ssl-allow true
+          set ftp:ssl-force true
+          set ftp:ssl-protect-data true
+          set ftp:ssl-protect-list true
+          set ssl:verify-certificate false"
+          FTP="set ftp:ssl-allow false"
+
+          # Comunes: modo pasivo, una transferencia a la vez y reintentos
+          # generosos, porque el servidor corta la conexion de datos a veces.
+          COMUN="set cmd:fail-exit true
+          set ftp:passive-mode true
+          set ftp:prefer-epsv false
+          set ftp:use-mdtm false
+          set xfer:clobber true
+          set mirror:parallel-transfer-count 1
+          set mirror:use-pget-n 1"
+
+          # ---- 1. sonda: ¿funciona la conexion de datos?
+          # Un LIST necesita el canal de datos. Se prueba primero con FTPS y,
+          # si se corta, con FTP sin cifrar (el cortafuegos del hosting solo
+          # abre los puertos pasivos cuando puede leer el canal de control).
+          # Si tampoco responde, el job termina enseguida con el aviso, en
+          # lugar de reintentar durante media hora.
+          sonda() {
+            cat > sonda.cmd <<EOF
+          $COMUN
+          $1
+          set net:timeout 25
+          set net:max-retries 2
+          set net:reconnect-interval-base 3
+          open --env-password -u "$FTP_USERNAME" "ftp://$FTP_SERVER"
+          cls -1 "$CARPETA" > /dev/null
+          bye
+          EOF
+            lftp -f sonda.cmd
+          }
+          if [ "$PROTOCOLO" = "auto" ]; then
+            if sonda "$FTPS"; then
+              PROTOCOLO=ftps
+              echo "FTPS responde en el canal de datos: se publica cifrado."
+            elif sonda "$FTP"; then
+              PROTOCOLO=ftp
+              echo "::warning::FTPS no completa la conexion de datos en este hosting. Se publica por FTP sin cifrar (solo van los archivos de la web)."
+            else
+              echo "::error title=Sin canal de datos FTP::El servidor acepta la conexion pero corta el canal de datos tanto con FTPS como con FTP. Pide al hosting que abra el rango de puertos pasivos del FTP (o que habilite SFTP para la cuenta) y comprueba que FTP_SERVER sea ftp.rednacionalsalud.com."
+              exit 1
+            fi
+          fi
+
+          if [ "$PROTOCOLO" = "ftp" ]; then SSL="$FTP"; else SSL="$FTPS"; fi
+          echo "protocolo=$PROTOCOLO" >> "$GITHUB_OUTPUT"
+
+          # ---- 2. subida
+          cat > lftp.cmd <<EOF
+          $COMUN
+          $SSL
+          set net:timeout 60
+          set net:max-retries 4
+          set net:persist-retries 4
+          set net:reconnect-interval-base 5
+          set net:reconnect-interval-multiplier 1.5
+          set net:reconnect-interval-max 40
+          open --env-password -u "$FTP_USERNAME" "ftp://$FTP_SERVER"
+          mirror --reverse --verbose=1 --no-perms --no-symlinks --transfer-all             --exclude-glob .user.ini --exclude-glob .git*             --exclude-glob _respaldo_inicial --exclude-glob _respaldo_inicial/*             --exclude-glob cgi-bin --exclude-glob .well-known             ./dist/ "$CARPETA"
+          bye
+          EOF
+
+          # el paso entero se repite si lftp acaba en error (tras agotar sus
+          # propios reintentos por archivo)
+          for intento in 1 2 3; do
+            echo "::group::Subida por $PROTOCOLO, intento $intento"
+            if lftp -f lftp.cmd; then
+              echo "::endgroup::"
+              echo "Publicado en $FTP_SERVER/$CARPETA por $PROTOCOLO"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::La subida fallo (intento $intento de 3). Se vuelve a intentar en 30 s."
+            sleep 30
+          done
+          exit 1
+
+      - name: Aviso si el FTP rechazo la conexion
+        if: failure() && steps.ftp.outcome == 'failure'
+        run: |
+          echo "::error title=La publicacion fallo::Si el registro muestra errores de conexion o de autenticacion FTP, revisa en el panel del hosting el interruptor 'FTP bloqueado' (se activa solo cada 28 dias), desbloquealo y vuelve a lanzar este job con 'Re-run jobs'. Si el error persiste en el canal de datos, lanza el job a mano (Run workflow) con protocolo 'ftp'."
+          exit 1

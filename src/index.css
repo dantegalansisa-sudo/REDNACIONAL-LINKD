@@ -48,3 +48,8 @@
   .ui-compact { zoom: 0.85; }
   .portal-compact { zoom: 0.9; }
 }
+/* Laptops con escala de Windows al 125–150 %: la ventana útil es baja (≈ 650–800 px),
+   así que registros y logins se reducen según la altura para verse completos al 100 %. */
+@media (min-width: 1024px) and (max-height: 950px) { .ui-compact { zoom: 0.78; } }
+@media (min-width: 1024px) and (max-height: 800px) { .ui-compact { zoom: 0.7; } .portal-compact { zoom: 0.85; } }
+@media (min-width: 1024px) and (max-height: 680px) { .ui-compact { zoom: 0.62; } .portal-compact { zoom: 0.8; } }
