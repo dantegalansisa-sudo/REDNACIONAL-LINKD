@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   ArrowLeft, ArrowRight, Award, Bell, Camera, Check, CheckCircle2, Clock, ClipboardList, Contact, Eye, FileCheck2,
@@ -34,6 +34,8 @@ const initial = {
 
 export function RegisterDoctorModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [step, setStep] = useState(0)
+  // Al cambiar de paso, volver al inicio del modal
+  useEffect(() => { document.querySelectorAll('.fixed.inset-0').forEach((el) => el.scrollTo({ top: 0 })) }, [step])
   const [tipo, setTipo] = useState<Tipo>('radiologo')
   const [f, setF] = useState(initial)
   const [esp, setEsp] = useState<string[]>([])

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import {
@@ -47,6 +47,8 @@ function ReadItem({ label, value, icon }: { label: string; value: string; icon?:
 export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
+  // Al cambiar de paso, volver al inicio del modal
+  useEffect(() => { document.querySelectorAll('.fixed.inset-0').forEach((el) => el.scrollTo({ top: 0 })) }, [step])
   const [f, setF] = useState(initial)
   const [terms, setTerms] = useState([false, false])
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -85,29 +87,31 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
   const left = LEFT[step === 0 ? 0 : step === 3 ? 2 : 1]
 
   return (
-    <Modal open={open} onClose={close} className="max-w-[1460px]" closeOnBackdrop={false}>
-      <div className="grid min-h-[min(860px,92vh)] lg:grid-cols-[minmax(0,500px)_1fr]">
-        {/* Panel izquierdo */}
-        <aside className="relative hidden overflow-hidden bg-gradient-to-b from-white to-[#e6effb] lg:block">
-          <img src="/img/paciente-sala.webp" alt="" className="absolute inset-x-0 bottom-0 h-[64%] w-full object-cover object-[center_88%]" />
-          <div className="absolute inset-x-0 top-[38%] h-[18%] bg-gradient-to-b from-[#eef4fc] to-transparent" />
-          <div className="relative px-9 pt-7">
-            <Logo size="md" to={null} subtitle="RED NACIONAL DE SALUD DOMINICANA" className="[&_img]:h-[66px] [&_img]:w-[66px]" />
-            <h2 className={clsx('mt-8 font-bold leading-[1.05] tracking-tight text-ink', step === 3 ? 'text-[44px]' : 'text-[54px]')}>{left.title}</h2>
-            <p className="mt-3 max-w-[380px] text-[22px] leading-snug text-ink">{left.text}</p>
+    <Modal open={open} onClose={close} className="max-w-[1280px]" closeOnBackdrop={false}>
+      <div className="grid min-h-[min(720px,88vh)] lg:grid-cols-[minmax(0,400px)_1fr]">
+        {/* Panel izquierdo: texto arriba y foto abajo, sin superponerse */}
+        <aside className="hidden flex-col overflow-hidden bg-gradient-to-b from-white to-[#e6effb] lg:flex">
+          <div className="px-8 pt-7">
+            <Logo size="md" to={null} subtitle="RED NACIONAL DE SALUD DOMINICANA" className="[&_img]:h-[56px] [&_img]:w-[56px]" />
+            <h2 className={clsx('mt-7 font-bold leading-[1.08] tracking-tight text-ink', step === 3 ? 'text-[32px]' : 'text-[40px]')}>{left.title}</h2>
+            <p className="mt-3 max-w-[330px] text-[17px] leading-snug text-ink/90">{left.text}</p>
             <ul className="mt-5 space-y-3">
               {left.items.map(([Icon, t]) => (
-                <li key={t} className="flex items-center gap-4">
-                  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white/80 text-brand-600 shadow-sm"><Icon size={24} /></span>
-                  <span className="max-w-[230px] text-[17px] leading-snug text-ink">{t}</span>
+                <li key={t} className="flex items-center gap-3.5">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-brand-600 shadow-sm"><Icon size={20} /></span>
+                  <span className="max-w-[240px] text-[14.5px] leading-snug text-ink">{t}</span>
                 </li>
               ))}
             </ul>
           </div>
+          <div className="relative mt-6 min-h-[200px] flex-1">
+            <img src="/img/paciente-sala.webp" alt="" className="absolute inset-0 h-full w-full object-cover object-[center_85%]" />
+            <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-[#eef4fc] to-transparent" />
+          </div>
         </aside>
 
         {/* Contenido */}
-        <div className="flex flex-col px-4 pb-5 pt-5 sm:px-8">
+        <div className="flex flex-col px-4 pb-6 pt-5 sm:px-10">
           <div className="mb-3 lg:hidden"><Logo size="sm" to={null} subtitle="RED NACIONAL DE SALUD DOMINICANA" /></div>
           {step < 3 && <RegStepper steps={steps} current={step} className="pr-10" />}
 
@@ -281,41 +285,41 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
           {/* Éxito */}
           {step === 3 && (
             <div className="flex-1 pt-2">
-              <div className="relative mx-auto flex h-24 w-24 items-center justify-center">
-                <span className="flex h-[88px] w-[88px] items-center justify-center rounded-full bg-emerald-600 text-white"><Check size={50} strokeWidth={3} /></span>
+              <div className="relative mx-auto flex h-20 w-20 items-center justify-center">
+                <span className="flex h-[68px] w-[68px] items-center justify-center rounded-full bg-emerald-600 text-white"><Check size={38} strokeWidth={3} /></span>
                 <span className="absolute -left-8 top-3 h-1 w-5 rotate-[30deg] rounded bg-brand-600" /><span className="absolute -left-6 bottom-4 h-1 w-4 -rotate-12 rounded bg-emerald-400" />
                 <span className="absolute -right-8 top-3 h-1 w-5 -rotate-[30deg] rounded bg-orange-400" /><span className="absolute -right-6 bottom-4 h-1 w-4 rotate-12 rounded bg-brand-400" />
               </div>
-              <h2 className="mt-3 text-center text-[36px] font-bold text-ink sm:text-[44px]">¡Registro completado!</h2>
-              <p className="mx-auto max-w-[780px] text-center text-[17px] text-brand-800/80 sm:text-[20px]">Tu información ha sido guardada correctamente en la Red Nacional de Salud. A continuación encontrarás tu código de paciente y las instrucciones para acceder a tu portal.</p>
-              <div className="mt-5 grid gap-4 rounded-xl bg-[#eef4fd] p-5 md:grid-cols-[1.4fr_1fr]">
+              <h2 className="mt-2 text-center text-[28px] font-bold text-ink sm:text-[32px]">¡Registro completado!</h2>
+              <p className="mx-auto mt-1 max-w-[640px] text-center text-[15px] leading-snug text-brand-800/80">Tu información ha sido guardada correctamente en la Red Nacional de Salud. A continuación encontrarás tu código de paciente y las instrucciones para acceder a tu portal.</p>
+              <div className="mt-5 grid gap-4 rounded-xl bg-[#eef4fd] p-4 md:grid-cols-[1.35fr_1fr]">
                 <div className="flex gap-4">
-                  <UserRound size={44} className="mt-1 shrink-0 text-brand-600" />
+                  <UserRound size={32} className="mt-0.5 shrink-0 text-brand-600" />
                   <div>
-                    <div className="text-[16px] font-bold tracking-wide text-ink">TU CÓDIGO DE PACIENTE</div>
-                    <div className="mt-2 flex items-center gap-4 rounded-xl bg-white px-5 py-3">
-                      <span className="text-[30px] font-bold text-ink sm:text-[38px]">{CODIGO}</span>
+                    <div className="text-[13px] font-bold tracking-wide text-ink">TU CÓDIGO DE PACIENTE</div>
+                    <div className="mt-2 flex w-fit items-center gap-4 rounded-xl bg-white px-4 py-2">
+                      <span className="text-[24px] font-bold text-ink sm:text-[26px]">{CODIGO}</span>
                       <button onClick={() => { try { navigator.clipboard.writeText(CODIGO) } catch { /* sin portapapeles */ } setCopied(true); setTimeout(() => setCopied(false), 1500) }}
-                        className="border-l border-[#dbe5f5] pl-4 text-brand-600" title="Copiar código">{copied ? <Check size={26} /> : <Copy size={26} />}</button>
+                        className="border-l border-[#dbe5f5] pl-4 text-brand-600" title="Copiar código">{copied ? <Check size={20} /> : <Copy size={20} />}</button>
                     </div>
-                    <p className="mt-2 text-[15px] text-ink/70">Guarda este código para identificarte en futuras consultas y acceder a tu información.</p>
+                    <p className="mt-2 text-[13px] text-ink/70">Guarda este código para identificarte en futuras consultas y acceder a tu información.</p>
                   </div>
                 </div>
                 <div className="flex gap-4 border-[#cfdcf2] md:border-l md:pl-6">
-                  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white"><Phone size={26} fill="currentColor" /></span>
-                  <div><div className="text-[18px] font-bold leading-tight text-ink">Información enviada<br />por WhatsApp</div><p className="mt-2 text-[15px] text-ink/70">También hemos enviado tu código de paciente y estas instrucciones a tu número de WhatsApp registrado.</p></div>
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white"><Phone size={20} fill="currentColor" /></span>
+                  <div><div className="text-[15px] font-bold leading-tight text-ink">Información enviada por WhatsApp</div><p className="mt-1.5 text-[13px] text-ink/70">También hemos enviado tu código de paciente y estas instrucciones a tu número de WhatsApp registrado.</p></div>
                 </div>
               </div>
-              <div className="mt-4 grid items-center gap-4 rounded-xl bg-[#eef4fd] p-5 md:grid-cols-[1.5fr_1fr]">
+              <div className="mt-3 grid items-center gap-4 rounded-xl bg-[#eef4fd] p-4 md:grid-cols-[1.6fr_1fr]">
                 <div>
-                  <h3 className="flex items-center gap-3 text-[20px] font-bold text-ink"><KeyRound size={28} className="text-brand-600" /> ¿Cómo acceder a tu portal de paciente?</h3>
-                  <ol className="mt-3 space-y-3 text-[15px] text-ink/80">
+                  <h3 className="flex items-center gap-2.5 text-[16px] font-bold text-ink"><KeyRound size={22} className="text-brand-600" /> ¿Cómo acceder a tu portal de paciente?</h3>
+                  <ol className="mt-3 space-y-2 text-[13.5px] text-ink/80">
                     {[<>Ingresa al <b>portal</b> de la Red Nacional de Salud.</>, <>En el campo <b>Usuario</b>, escribe tu código de paciente: <b className="text-brand-700">{CODIGO}</b>.</>, <>En el campo <b>Clave</b>, ingresa tu número de <b>cédula</b> o <b>pasaporte</b>.</>, <>Haz clic en <b>Iniciar sesión</b>.</>].map((t, i) => (
-                      <li key={i} className="flex items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 font-bold text-brand-700">{i + 1}</span><span>{t}</span></li>
+                      <li key={i} className="flex items-center gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-[12px] font-bold text-brand-700">{i + 1}</span><span>{t}</span></li>
                     ))}
                   </ol>
                 </div>
-                <div className="mx-auto w-full max-w-[280px]">
+                <div className="mx-auto w-full max-w-[220px]">
                   <div className="rounded-t-xl border-[6px] border-b-0 border-brand-400 bg-white p-4 text-center">
                     <img src="/img/crops/logo-h-icon.webp" alt="" className="mx-auto h-7 w-7 rounded" />
                     <div className="font-serif text-[12px] font-bold text-ink">RedNacionalSalud.do</div>
@@ -326,9 +330,9 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
                   <div className="h-3 rounded-b-lg bg-brand-400" />
                 </div>
               </div>
-              <div className="mt-4 flex items-start gap-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <AlertCircle size={44} className="shrink-0 fill-orange-500 text-white" />
-                <div><b className="text-[18px] text-orange-600">Recomendamos cambiar tu contraseña</b><p className="text-[15px] text-ink/80">Por tu seguridad, te sugerimos cambiar tu contraseña en cuanto ingreses a tu portal. Puedes hacerlo fácilmente desde tu perfil, en la sección <b className="text-ink">Seguridad</b>.</p></div>
+              <div className="mt-3 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <AlertCircle size={30} className="shrink-0 fill-orange-500 text-white" />
+                <div><b className="text-[15px] text-orange-600">Recomendamos cambiar tu contraseña</b><p className="text-[13px] text-ink/80">Por tu seguridad, te sugerimos cambiar tu contraseña en cuanto ingreses a tu portal. Puedes hacerlo fácilmente desde tu perfil, en la sección <b className="text-ink">Seguridad</b>.</p></div>
               </div>
             </div>
           )}
@@ -343,8 +347,8 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
             </div>
           ) : step === 3 ? (
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-              <button onClick={close} className="flex items-center gap-3 rounded-full border-2 border-brand-600 px-9 py-3 text-[19px] font-medium text-brand-700 hover:bg-brand-50"><HomeIcon size={22} fill="currentColor" /> Ir al inicio</button>
-              <button onClick={() => { close(); navigate('/paciente/login') }} className="flex items-center gap-3 rounded-full bg-brand-600 px-12 py-3.5 text-[19px] font-medium text-white hover:bg-brand-700">Iniciar sesión ahora <ArrowRight size={20} /></button>
+              <button onClick={close} className="flex items-center gap-2.5 rounded-full border-2 border-brand-600 px-7 py-2.5 text-[15px] font-medium text-brand-700 hover:bg-brand-50"><HomeIcon size={18} fill="currentColor" /> Ir al inicio</button>
+              <button onClick={() => { close(); navigate('/paciente/login') }} className="flex items-center gap-2.5 rounded-full bg-brand-600 px-9 py-3 text-[15px] font-medium text-white hover:bg-brand-700">Iniciar sesión ahora <ArrowRight size={18} /></button>
             </div>
           ) : null}
         </div>
