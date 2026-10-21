@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { loginAdmin, mensajeError, supabaseConfigurado } from '../../lib/api'
 import { ArrowRight, Eye, EyeOff, KeyRound, Lock, ShieldCheck, User } from 'lucide-react'
 import { PartnersMark, RnsLogo } from '../../components/Logo'
 import { BRAND } from '../../config/brand'
@@ -13,11 +14,21 @@ export default function AdminLogin() {
   const [show, setShow] = useState(false)
   const [error, setError] = useState('')
 
-  const submit = (e: React.FormEvent) => {
+  const [cargando, setCargando] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (step === 'cred') {
       if (!user.trim() || pass.length < 6) return setError('Usuario o contraseña inválidos.')
-      setError(''); setStep('2fa')
+      setError('')
+      if (supabaseConfigurado) {
+        // Acceso real con Supabase (la verificación en dos pasos se activa en una fase posterior)
+        setCargando(true)
+        try { await loginAdmin(user, pass) } catch (err) { setCargando(false); return setError(mensajeError(err)) }
+        setCargando(false)
+        return navigate('/admin')
+      }
+      setStep('2fa')
     } else {
       if (!/^\d{6}$/.test(code)) return setError('Ingrese el código de 6 dígitos de su aplicación autenticadora.')
       navigate('/admin')
@@ -64,7 +75,7 @@ export default function AdminLogin() {
             </>
           )}
           {error && <p className="mt-3 text-[13px] text-red-600">{error}</p>}
-          <button className="btn-primary btn-pill mt-6 w-full !py-3.5 !text-[16px]">{step === 'cred' ? 'Continuar' : 'Verificar e ingresar'} <ArrowRight size={18} /></button>
+          <button disabled={cargando} className="btn-primary btn-pill mt-6 w-full !py-3.5 !text-[16px]">{cargando ? 'Ingresando…' : step === 'cred' ? (supabaseConfigurado ? 'Ingresar' : 'Continuar') : 'Verificar e ingresar'} <ArrowRight size={18} /></button>
           {step === '2fa' && <button type="button" onClick={() => setStep('cred')} className="mt-3 w-full text-[13px] text-brand-700">← Volver</button>}
           <p className="mt-6 text-center text-[12px] text-slate-500">Acceso restringido a personal autorizado. Todas las acciones quedan registradas en auditoría.</p>
           <p className="mt-2 text-center text-[12px]"><Link to="/" className="text-brand-700">Volver al sitio público</Link></p>

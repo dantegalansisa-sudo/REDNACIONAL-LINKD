@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   ArrowLeft, ArrowRight, Award, Bell, Camera, Check, CheckCircle2, Clock, ClipboardList, Contact, Eye, FileCheck2,
@@ -9,6 +9,7 @@ import { Modal } from '../../components/ui'
 import { Logo } from '../../components/Logo'
 import { ESPECIALIDADES_MED, MODALIDADES_RAD, PROVINCIAS, REGIONES, municipiosDe, sectoresDe } from '../../data/geo'
 import { BlockHead, Field, IconInput, NativeSelect, RegStepper, WhatsAppIcon } from './RegisterShared'
+import { exequaturRegistrado, mensajeError, registrarMedico, supabaseConfigurado } from '../../lib/api'
 
 type Tipo = 'radiologo' | 'referidor'
 type DocKey = 'titulo' | 'exequatur' | 'cedula' | 'especialidad' | 'otros'
@@ -21,14 +22,11 @@ const DOCS: { key: DocKey; icon: typeof GraduationCap; title: string; req: boole
   { key: 'otros', icon: Paperclip, title: 'Otros documentos', req: false, sub: { radiologo: 'Cualquier documento adicional.', referidor: 'Cualquier documento adicional.' } },
 ]
 
-/** Simula la consulta al registro de exequátur (en producción: API MESCyT / SNS) */
-const EXEQUATUR_DB: Record<Tipo, { trat: string; nombres: string; apellidos: string; cedula: string; sexo: string; foto: string }> = {
-  radiologo: { trat: 'Dr.', nombres: 'Carlos Andrés', apellidos: 'Méndez Rodríguez', cedula: '001-1234567-1', sexo: 'Masculino', foto: '/img/crops/dr-carlos.webp' },
-  referidor: { trat: 'Dr.', nombres: 'Luis Fernando', apellidos: 'González Santana', cedula: '402-3456789-0', sexo: 'Masculino', foto: '/img/crops/dr-luis.webp' },
-}
-
+// Los datos personales los escribe el médico; el SNS los verifica contra sus documentos al aprobar.
+// (Cuando exista convenio con MESCyT/SNS se podrán autocompletar por exequátur.)
 const initial = {
-  exequatur: '', telRes: '', telWa: '', email: '', email2: '',
+  exequatur: '', trat: 'Dr.', nombres: '', apellidos: '', cedula: '', sexo: '',
+  telRes: '', telWa: '', email: '', email2: '',
   provincia: '', municipio: '', sector: '', calle: '', casa: '', residencial: '', otraEsp: '',
 }
 
@@ -40,26 +38,32 @@ export function RegisterDoctorModal({ open, onClose }: { open: boolean; onClose:
   const [f, setF] = useState(initial)
   const [esp, setEsp] = useState<string[]>([])
   const [reg, setReg] = useState<string[]>([])
-  const [docs, setDocs] = useState<Partial<Record<DocKey, string>>>({})
-  const [foto, setFoto] = useState<string | null>(null)
+  const [docs, setDocs] = useState<Partial<Record<DocKey, File>>>({})
+  const [foto, setFoto] = useState<File | null>(null)
+  const [enviando, setEnviando] = useState(false)
+  const [errorEnvio, setErrorEnvio] = useState('')
   const [acepta, setAcepta] = useState([false, false])
   const [errors, setErrors] = useState<Record<string, string>>({})
   const fotoRef = useRef<HTMLInputElement>(null)
 
-  const found = f.exequatur.trim().length >= 4 ? EXEQUATUR_DB[tipo] : null
+  const found = f.exequatur.trim().length >= 3 ? { trat: f.trat, nombres: f.nombres, apellidos: f.apellidos, cedula: f.cedula, sexo: f.sexo } : null
   const set = (k: keyof typeof initial, v: string) => setF((p) => ({ ...p, [k]: v }))
   const toggle = (arr: string[], v: string, fn: (a: string[]) => void) => fn(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
   const tipoLabel = tipo === 'radiologo' ? 'Médico Radiólogo' : 'Médico de Consulta (Referidor)'
-  const photo = foto ?? found?.foto ?? null
+  const photo = useMemo(() => (foto ? URL.createObjectURL(foto) : null), [foto])
 
   const reset = () => {
-    setStep(0); setTipo('radiologo'); setF(initial); setEsp([]); setReg([]); setDocs({}); setFoto(null); setAcepta([false, false]); setErrors({})
+    setStep(0); setTipo('radiologo'); setF(initial); setEsp([]); setReg([]); setDocs({}); setFoto(null); setAcepta([false, false]); setErrors({}); setErrorEnvio(''); setEnviando(false)
   }
   const close = () => { reset(); onClose() }
 
   const validate = () => {
     const e: Record<string, string> = {}
     if (!found) e.exequatur = 'Ingrese un número de exequátur válido'
+    if (!f.nombres.trim()) e.nombres = 'Requerido'
+    if (!f.apellidos.trim()) e.apellidos = 'Requerido'
+    if (f.cedula.replace(/\D/g, '').length !== 11) e.cedula = 'Cédula de 11 dígitos'
+    if (!f.sexo) e.sexo = 'Requerido'
     if (!photo) e.foto = 'La fotografía es obligatoria'
     if (!/^\d{3}-?\d{3}-?\d{4}$/.test(f.telRes.trim())) e.telRes = 'Teléfono inválido'
     if (!/^\d{3}-?\d{3}-?\d{4}$/.test(f.telWa.trim())) e.telWa = 'Teléfono inválido'
@@ -124,15 +128,11 @@ export function RegisterDoctorModal({ open, onClose }: { open: boolean; onClose:
               <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-600"><Bell size={40} fill="currentColor" /></span>
               <div className="flex-1">
                 <div className="text-[18px] font-bold text-ink">Recibirá una notificación cuando su cuenta sea aprobada</div>
-                <div className="text-[15px] text-slate-500">Le enviaremos las instrucciones de acceso por los medios registrados:</div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <div className="flex items-center gap-3 rounded-xl border border-[#dbe5f5] bg-white p-3">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white"><WhatsAppIcon className="h-7 w-7" /></span>
-                    <span><b className="block text-[16px] text-ink">WhatsApp</b><span className="text-[14px] text-slate-500">Al número registrado</span></span>
-                  </div>
+                <div className="text-[15px] text-slate-500">Le enviaremos las instrucciones de acceso por correo electrónico:</div>
+                <div className="mt-3 grid gap-3">
                   <div className="flex items-center gap-3 rounded-xl border border-[#dbe5f5] bg-white p-3">
                     <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-600 text-white"><Mail size={24} /></span>
-                    <span><b className="block text-[16px] text-ink">Correo electrónico</b><span className="text-[14px] text-slate-500">A su dirección registrada</span></span>
+                    <span><b className="block text-[16px] text-ink">Correo electrónico</b><span className="text-[14px] text-slate-500">Recibirá un enlace para crear su contraseña en su dirección registrada</span></span>
                   </div>
                 </div>
               </div>
@@ -214,11 +214,11 @@ export function RegisterDoctorModal({ open, onClose }: { open: boolean; onClose:
                     </Field>
                     <div>
                       <span className="label">Status</span>
-                      {found ? <span className="inline-flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-1.5 text-[14px] text-emerald-700"><CheckCircle2 size={16} className="fill-emerald-500 text-white" /> Activo</span>
+                      {found ? <span className="inline-flex items-center gap-2 rounded-md bg-amber-50 px-3 py-1.5 text-[14px] text-amber-700"><Clock size={16} /> Por verificar</span>
                         : <span className="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-1.5 text-[14px] text-slate-500">—</span>}
                     </div>
                     <div className="flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-[12px] text-ink/80 md:border-l md:border-[#dbe5f5]">
-                      <Info size={20} className="shrink-0 fill-brand-600 text-white" /> Ingrese su número de exequátur para autocompletar sus datos profesionales.
+                      <Info size={20} className="shrink-0 fill-brand-600 text-white" /> El SNS verificará su exequátur y documentos antes de aprobar su cuenta.
                     </div>
                   </div>
                   <div className="mt-4 grid gap-4 md:grid-cols-[170px_1fr]">
@@ -226,18 +226,18 @@ export function RegisterDoctorModal({ open, onClose }: { open: boolean; onClose:
                       <div className="relative h-[165px] w-[165px] overflow-hidden rounded-xl bg-brand-50">
                         {photo ? <img src={photo} alt="Fotografía" className="h-full w-full object-cover" /> : <UserRound size={90} className="absolute inset-0 m-auto text-brand-200" />}
                         <button type="button" onClick={() => fotoRef.current?.click()} className="absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-full border-2 border-white bg-brand-600 text-white"><Camera size={18} /></button>
-                        <input ref={fotoRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) setFoto(URL.createObjectURL(file)) }} />
+                        <input ref={fotoRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) setFoto(file) }} />
                       </div>
                       <p className="mt-2 text-[13px] font-semibold text-ink">Fotografía (obligatoria)</p>
                       <p className="text-[12px] leading-snug text-slate-500">Formato: PNG, JPEG, JPG<br />Tamaño: 2x2 pulgadas<br />Máx. 5 MB</p>
                       {errors.foto && <p className="text-[11px] text-red-600">{errors.foto}</p>}
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[0.6fr_1fr_1fr]">
-                      <Field label="Tratamiento" req><input className="input-ro" readOnly value={found?.trat ?? ''} placeholder="Dr." /></Field>
-                      <Field label="Nombres" req><input className="input-ro" readOnly value={found?.nombres ?? ''} placeholder="Autocompletado" /></Field>
-                      <Field label="Apellidos" req><input className="input-ro" readOnly value={found?.apellidos ?? ''} placeholder="Autocompletado" /></Field>
-                      <Field label="Cédula" req className="lg:col-span-2"><input className="input-ro" readOnly value={found?.cedula ?? ''} placeholder="000-0000000-0" /></Field>
-                      <Field label="Sexo" req><NativeSelect value={found?.sexo ?? ''} onChange={() => {}} options={['Masculino', 'Femenino']} placeholder="—" disabled /></Field>
+                      <Field label="Tratamiento" req><NativeSelect value={f.trat} onChange={(v) => set('trat', v)} options={['Dr.', 'Dra.', 'Lic.']} /></Field>
+                      <Field label="Nombres" req error={errors.nombres}><input className="input" value={f.nombres} onChange={(e) => set('nombres', e.target.value)} placeholder="Nombres" /></Field>
+                      <Field label="Apellidos" req error={errors.apellidos}><input className="input" value={f.apellidos} onChange={(e) => set('apellidos', e.target.value)} placeholder="Apellidos" /></Field>
+                      <Field label="Cédula" req error={errors.cedula} className="lg:col-span-2"><input className="input" value={f.cedula} onChange={(e) => set('cedula', e.target.value)} placeholder="000-0000000-0" inputMode="numeric" /></Field>
+                      <Field label="Sexo" req error={errors.sexo}><NativeSelect value={f.sexo} onChange={(v) => set('sexo', v)} options={['Masculino', 'Femenino']} placeholder="Seleccione" /></Field>
                       <Field label="Tel. Residencia" req error={errors.telRes} className="lg:col-span-1"><IconInput icon={Phone} value={f.telRes} onChange={(e) => set('telRes', e.target.value)} placeholder="809-555-0101" /></Field>
                       <Field label="Tel. Personal (WhatsApp)" req error={errors.telWa} className="lg:col-span-2"><span className="relative flex items-center"><WhatsAppIcon className="pointer-events-none absolute left-3 h-[18px] w-[18px] text-emerald-500" /><input className="input pl-10" value={f.telWa} onChange={(e) => set('telWa', e.target.value)} placeholder="809-555-0202" /></span></Field>
                       <Field label="Correo electrónico" req error={errors.email} className="lg:col-span-1"><IconInput icon={Mail} type="email" value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="correo@email.com" /></Field>
@@ -269,14 +269,14 @@ export function RegisterDoctorModal({ open, onClose }: { open: boolean; onClose:
                     <div className="min-w-0 flex-1">
                       <div className="text-[13.5px] font-semibold text-ink">{d.title} {d.req ? <span className="req">*</span> : <span className="font-normal text-slate-500">(Opcional)</span>}</div>
                       <div className="text-[12px] text-slate-500">{d.sub[tipo]}</div>
-                      {docs[d.key] && <div className="truncate text-[11.5px] text-emerald-600">✓ {docs[d.key]}</div>}
+                      {docs[d.key] && <div className="truncate text-[11.5px] text-emerald-600">✓ {docs[d.key]!.name}</div>}
                       {errors['doc-' + d.key] && !docs[d.key] && <div className="text-[11px] text-red-600">{errors['doc-' + d.key]}</div>}
                     </div>
                     <label className={clsx('flex w-[150px] shrink-0 cursor-pointer items-center gap-2 rounded-lg border-2 border-dashed px-3 py-2.5 text-[12.5px] transition',
                       docs[d.key] ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-brand-200 text-brand-700 hover:bg-brand-50')}>
                       {docs[d.key] ? <CheckCircle2 size={20} /> : <Upload size={20} />}
                       <span className="leading-tight">{docs[d.key] ? 'Cambiar archivo' : <>Seleccionar<br />archivo</>}</span>
-                      <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) setDocs((p) => ({ ...p, [d.key]: file.name })) }} />
+                      <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) setDocs((p) => ({ ...p, [d.key]: file })) }} />
                     </label>
                   </div>
                 ))}
@@ -337,7 +337,7 @@ export function RegisterDoctorModal({ open, onClose }: { open: boolean; onClose:
                     <div className="flex flex-wrap items-center gap-6 rounded-t-xl bg-[#eaf1fc] px-5 py-3">
                       <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-600 text-white"><Contact size={22} /></span>
                       <span><span className="block text-[14px] text-ink">No. Exequátur</span><b className="text-[19px] text-ink">{f.exequatur}</b></span>
-                      <span className="ml-auto border-l border-[#d3dff2] pl-6"><span className="block text-[14px] text-ink">Status</span><span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-3 py-1 text-[14px] text-emerald-700"><CheckCircle2 size={15} className="fill-emerald-500 text-white" /> Activo</span></span>
+                      <span className="ml-auto border-l border-[#d3dff2] pl-6"><span className="block text-[14px] text-ink">Status</span><span className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-3 py-1 text-[14px] text-amber-700"><Clock size={15} /> Por verificar</span></span>
                     </div>
                     <div className="grid gap-3 px-5 py-3 sm:grid-cols-2">
                       <div className="sm:col-span-2"><div className="text-[13.5px] text-ink">Nombre completo</div><div className="text-[18px] font-semibold text-ink">{fullName}</div></div>
@@ -381,7 +381,7 @@ export function RegisterDoctorModal({ open, onClose }: { open: boolean; onClose:
                   {DOCS.filter((d) => docs[d.key]).map((d) => (
                     <div key={d.key} className="flex items-center gap-3 rounded-lg border border-[#eef2f8] p-2.5">
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600"><d.icon size={22} /></span>
-                      <div className="min-w-0 flex-1"><div className="text-[13.5px] font-semibold text-ink">{d.title}</div><div className="truncate text-[12.5px] text-slate-500">{docs[d.key]}</div></div>
+                      <div className="min-w-0 flex-1"><div className="text-[13.5px] font-semibold text-ink">{d.title}</div><div className="truncate text-[12.5px] text-slate-500">{docs[d.key]!.name}</div></div>
                       <span className="flex items-center gap-1.5 text-[13.5px] text-emerald-600"><CheckCircle2 size={17} className="fill-emerald-500 text-white" /> Cargado</span>
                       <span className="flex h-9 w-10 items-center justify-center rounded-lg border border-[#dbe5f5] text-brand-600"><Eye size={18} /></span>
                     </div>
@@ -410,13 +410,38 @@ export function RegisterDoctorModal({ open, onClose }: { open: boolean; onClose:
               <ArrowLeft size={20} /> Anterior
             </button>
             {step === 1 ? (
-              <button onClick={() => { if (validate()) setStep(2) }} className="flex items-center gap-3 rounded-full bg-brand-600 px-12 py-3 text-[17px] font-medium text-white hover:bg-brand-700">
+              <button disabled={enviando} onClick={async () => {
+                if (!validate()) return
+                if (supabaseConfigurado) {
+                  try {
+                    setEnviando(true)
+                    if (await exequaturRegistrado(f.exequatur)) { setErrors({ exequatur: 'Este número de exequátur ya está registrado' }); return }
+                  } catch (err) { setErrors({ exequatur: mensajeError(err) }); return } finally { setEnviando(false) }
+                }
+                setStep(2)
+              }} className="flex items-center gap-3 rounded-full bg-brand-600 px-12 py-3 text-[17px] font-medium text-white hover:bg-brand-700">
                 Siguiente <ArrowRight size={20} />
               </button>
             ) : (
-              <button disabled={!acepta.every(Boolean)} onClick={() => setStep(3)} className="flex items-center gap-3 rounded-full bg-brand-600 px-10 py-3 text-[17px] font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50">
-                Finalizar Registro <ArrowRight size={20} />
-              </button>
+              <div className="flex flex-col items-end gap-1">
+                <button disabled={!acepta.every(Boolean) || enviando} onClick={async () => {
+                  setErrorEnvio('')
+                  if (!supabaseConfigurado) { setStep(3); return }
+                  setEnviando(true)
+                  try {
+                    await registrarMedico({
+                      tipo, exequatur: f.exequatur, tratamiento: f.trat, nombres: f.nombres.trim(), apellidos: f.apellidos.trim(), cedula: f.cedula, sexo: f.sexo,
+                      tel_residencia: f.telRes, tel_whatsapp: f.telWa, correo: f.email,
+                      provincia: f.provincia, municipio: f.municipio, sector: f.sector, calle: f.calle, casa: f.casa, residencial: f.residencial,
+                      especialidades: esp, otra_especialidad: f.otraEsp, regiones_interes: reg,
+                    }, foto, DOCS.filter((d) => docs[d.key]).map((d) => ({ tipo: d.key, file: docs[d.key]! })))
+                    setStep(3)
+                  } catch (err) { setErrorEnvio(mensajeError(err)) } finally { setEnviando(false) }
+                }} className="flex items-center gap-3 rounded-full bg-brand-600 px-10 py-3 text-[17px] font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50">
+                  {enviando ? 'Enviando…' : 'Finalizar Registro'} <ArrowRight size={20} />
+                </button>
+                {errorEnvio && <p className="max-w-[420px] text-right text-[13px] text-red-600">{errorEnvio}</p>}
+              </div>
             )}
           </div>
         )}

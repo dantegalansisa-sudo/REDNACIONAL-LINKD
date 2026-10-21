@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
 import { Award, CheckCircle2, Download, FileText, MapPin, Shield, Upload, User, UserRound, X } from 'lucide-react'
-import { Badge, InfoRow, Toggle, clsx } from '../../components/ui'
+import { Badge, InfoRow, Toggle, UserSilhouette, clsx } from '../../components/ui'
 import { ChangePasswordForm, PortalHeading } from '../patient/PatientPortal'
-import { DOCTORS, RoleSwitcher, useDoctorRole } from './DoctorPortal'
+import { RoleSwitcher, useDoctorInfo, useDoctorRole } from './DoctorPortal'
 
 const REGIONS = ['Ozama', 'Cibao Norte', 'Cibao Sur', 'Cibao Nordeste', 'Cibao Noroeste', 'Valdesia', 'Enriquillo', 'El Valle', 'Yuma', 'Higuamo']
 
@@ -10,7 +10,7 @@ type Doc = { name: string; size: string; date: string; status: 'Verificado' | 'E
 
 export default function Perfil() {
   const { role } = useDoctorRole()
-  const d = DOCTORS[role]
+  const d = useDoctorInfo()
   const rad = role === 'radiologo'
   const fileRef = useRef<HTMLInputElement>(null)
   const [regions, setRegions] = useState<string[]>(rad ? ['Ozama', 'Cibao Norte', 'Valdesia'] : ['Ozama'])
@@ -29,7 +29,7 @@ export default function Perfil() {
       <PortalHeading icon={User} title="Mi perfil" subtitle="Datos profesionales, documentación y seguridad de tu cuenta." actions={<RoleSwitcher />} />
 
       <section className="card mb-4 flex flex-col items-center gap-5 p-5 sm:flex-row">
-        <img src={d.photo} alt={d.name} className="h-28 w-28 rounded-full border-4 border-brand-100 object-cover" />
+        {d.photo ? <img src={d.photo} alt={d.name} className="h-28 w-28 rounded-full border-4 border-brand-100 object-cover" /> : <UserSilhouette size={112} />}
         <div className="min-w-0 flex-1 text-center sm:text-left">
           <h2 className="text-[23px] font-bold text-navy-800">{d.name}</h2>
           <p className="text-[15px] font-semibold text-brand-700">{d.code} · Exequátur {d.exequatur}</p>

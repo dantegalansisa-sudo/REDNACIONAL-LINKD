@@ -1,9 +1,11 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Building2, ClipboardList, FilePlus2, FileText, Home, Megaphone, Repeat, User, Users } from 'lucide-react'
 import PortalLayout, { type PortalConfig } from '../../layouts/PortalLayout'
 import { clsx } from '../../components/ui'
 import { lsGet, lsSet } from '../patient/PatientPortal'
+import { RequiereSesion, useSesion } from '../../lib/session'
+import { supabaseConfigurado, urlArchivo } from '../../lib/api'
 
 export type DoctorRole = 'radiologo' | 'referidor'
 const ROLE_KEY = 'rns-medico-rol'
@@ -24,15 +26,33 @@ export function useDoctorRole() {
 export const DOCTORS = {
   radiologo: {
     name: 'Dr. Carlos Andrés Méndez Rodríguez', first: 'Carlos', code: 'RAD-001', exequatur: '12345', photo: '/img/crops/dr-carlos.webp',
-    specialty: 'Médico radiólogo', email: 'cmendez@rednacionalsalud.do', phone: '809-555-2020',
+    specialty: 'Médico radiólogo', email: 'cmendez@rednacionalsalud.com', phone: '809-555-2020',
   },
   referidor: {
     name: 'Dr. Luis Fernando González Santana', first: 'Luis', code: 'MR-000156', exequatur: '45678', photo: '/img/crops/dr-luis.webp',
-    specialty: 'Medicina Interna · Médico referidor', email: 'lgonzalez@rednacionalsalud.do', phone: '809-555-1098',
+    specialty: 'Medicina Interna · Médico referidor', email: 'lgonzalez@rednacionalsalud.com', phone: '809-555-1098',
   },
 } as const
 
-function buildConfig(role: DoctorRole): PortalConfig {
+type DoctorInfo = { name: string; first: string; code: string; exequatur: string; photo: string | null; specialty: string; email: string; phone: string }
+
+/** Datos del médico conectado (con Supabase) o del médico de demostración */
+export function useDoctorInfo(): DoctorInfo {
+  const { role } = useDoctorRole()
+  const m = useSesion().sesion?.medico
+  const [foto, setFoto] = useState<string | null>(null)
+  useEffect(() => {
+    if (m?.foto_path) urlArchivo('fotos-perfil', m.foto_path).then(setFoto).catch(() => setFoto(null))
+  }, [m?.foto_path])
+  if (!m) return DOCTORS[role]
+  return {
+    name: `${m.tratamiento} ${m.nombre_completo}`, first: m.nombres.split(' ')[0], code: m.codigo, exequatur: m.exequatur, photo: foto,
+    specialty: m.tipo === 'radiologo' ? 'Médico radiólogo' : `${m.especialidades.join(', ') || 'Médico'} · Médico referidor`,
+    email: m.correo, phone: m.tel_whatsapp ?? '—',
+  }
+}
+
+function buildConfig(role: DoctorRole, info?: DoctorInfo): PortalConfig {
   const base = { home: '/medico', profilePath: '/medico/perfil', logoutPath: '/medico/login' }
   if (role === 'radiologo') {
     return {
@@ -52,7 +72,7 @@ function buildConfig(role: DoctorRole): PortalConfig {
         { to: '/medico/convocatorias', label: 'Convocatorias', icon: Megaphone },
         { to: '/medico/perfil', label: 'Mi perfil', icon: User },
       ],
-      user: { name: DOCTORS.radiologo.name, code: `${DOCTORS.radiologo.code} / Exequátur ${DOCTORS.radiologo.exequatur}` },
+      user: { name: (info ?? DOCTORS.radiologo).name, code: `${(info ?? DOCTORS.radiologo).code} / Exequátur ${(info ?? DOCTORS.radiologo).exequatur}` },
     }
   }
   return {
@@ -71,7 +91,7 @@ function buildConfig(role: DoctorRole): PortalConfig {
       { to: '/medico/hospitales', label: 'Hospitales', icon: Building2 },
       { to: '/medico/perfil', label: 'Mi perfil', icon: User },
     ],
-    user: { name: DOCTORS.referidor.name, code: DOCTORS.referidor.code },
+    user: { name: (info ?? DOCTORS.referidor).name, code: (info ?? DOCTORS.referidor).code },
   }
 }
 
@@ -79,6 +99,7 @@ function buildConfig(role: DoctorRole): PortalConfig {
 export function RoleSwitcher({ className }: { className?: string }) {
   const { role, setRole } = useDoctorRole()
   const navigate = useNavigate()
+  if (supabaseConfigurado) return null
   const change = (r: DoctorRole) => { if (r !== role) { setRole(r); navigate('/medico') } }
   return (
     <div className={clsx('inline-flex items-center gap-2 rounded-xl border border-dashed border-brand-300 bg-brand-50/60 px-2.5 py-1.5', className)}>
@@ -101,18 +122,34 @@ export function RoleNotice({ needed }: { needed: DoctorRole }) {
   return (
     <div className="card mx-auto mt-8 max-w-[520px] p-8 text-center">
       <p className="text-[18px] font-bold text-navy-800">Sección disponible para el perfil de {needed === 'radiologo' ? 'médico radiólogo' : 'médico referidor'}</p>
-      <p className="mt-1 text-[13.5px] text-slate-600">Tu sesión actual corresponde a otro perfil. En modo demostración puedes cambiar de rol.</p>
-      <button onClick={() => setRole(needed)} className="btn-primary mt-4">Cambiar a {needed === 'radiologo' ? 'radiólogo' : 'referidor'}</button>
+      <p className="mt-1 text-[13.5px] text-slate-600">Tu sesión actual corresponde a otro perfil.{!supabaseConfigurado && ' En modo demostración puedes cambiar de rol.'}</p>
+      {!supabaseConfigurado && <button onClick={() => setRole(needed)} className="btn-primary mt-4">Cambiar a {needed === 'radiologo' ? 'radiólogo' : 'referidor'}</button>}
     </div>
   )
 }
 
-export default function DoctorPortal() {
-  const [role, setRoleState] = useState<DoctorRole>(getDoctorRole)
-  const setRole = (r: DoctorRole) => { lsSet(ROLE_KEY, r); setRoleState(r) }
+function PortalMedico() {
+  const tipoReal = useSesion().sesion?.medico?.tipo
+  const [roleDemo, setRoleState] = useState<DoctorRole>(getDoctorRole)
+  // Con Supabase el rol lo define la cuenta del médico; en demostración se puede cambiar
+  const role = tipoReal ?? roleDemo
+  const setRole = (r: DoctorRole) => { if (tipoReal) return; lsSet(ROLE_KEY, r); setRoleState(r) }
   return (
     <RoleContext.Provider value={{ role, setRole }}>
-      <PortalLayout config={buildConfig(role)} />
+      <PortalConInfo role={role} />
     </RoleContext.Provider>
+  )
+}
+
+function PortalConInfo({ role }: { role: DoctorRole }) {
+  const info = useDoctorInfo()
+  return <PortalLayout config={buildConfig(role, info)} />
+}
+
+export default function DoctorPortal() {
+  return (
+    <RequiereSesion roles={['radiologo', 'referidor']} login="/medico/login">
+      <PortalMedico />
+    </RequiereSesion>
   )
 }

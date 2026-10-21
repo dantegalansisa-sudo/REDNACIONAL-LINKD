@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import { Bell, ChevronDown, LogOut, Menu, User, X, type LucideIcon } from 'lucide-react'
 import { Logo } from '../components/Logo'
+import { cerrarSesion, supabaseConfigurado } from '../lib/api'
 
 export type PortalNavItem = { to: string; label: string; icon: LucideIcon; end?: boolean }
 
@@ -80,7 +81,7 @@ export default function PortalLayout({ config, overlay }: { config: PortalConfig
             {menu && (
               <div className="absolute right-0 top-14 z-50 w-52 overflow-hidden rounded-xl border border-[#e3eaf6] bg-white py-1 shadow-soft">
                 <button onClick={() => navigate(config.profilePath)} className="flex w-full items-center gap-2 px-4 py-2.5 text-[13.5px] hover:bg-brand-50"><User size={16} /> Mi perfil</button>
-                <button onClick={() => navigate(config.logoutPath)} className="flex w-full items-center gap-2 border-t border-[#eef2f8] px-4 py-2.5 text-[13.5px] text-red-600 hover:bg-red-50"><LogOut size={16} /> Cerrar sesión</button>
+                <button onClick={async () => { if (supabaseConfigurado) await cerrarSesion(); navigate(config.logoutPath) }} className="flex w-full items-center gap-2 border-t border-[#eef2f8] px-4 py-2.5 text-[13.5px] text-red-600 hover:bg-red-50"><LogOut size={16} /> Cerrar sesión</button>
               </div>
             )}
           </div>

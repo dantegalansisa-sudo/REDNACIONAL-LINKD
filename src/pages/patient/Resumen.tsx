@@ -1,3 +1,4 @@
+import { fechaConEdad, formatoCedula, useSesion } from '../../lib/session'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -52,6 +53,7 @@ function BrowserIcon({ b }: { b: 'chrome' | 'edge' | 'safari' }) {
 }
 
 export default function Resumen() {
+  const pac = useSesion().sesion?.paciente
   const navigate = useNavigate()
   const [banner, setBanner] = useState(() => lsGet('rns-paciente-banner') !== 'off')
   const [report, setReport] = useState<Study | null>(null)
@@ -81,22 +83,22 @@ export default function Resumen() {
         <div className="relative flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:gap-6 sm:p-5">
           <UserSilhouette size={136} className="mx-auto sm:mx-0" />
           <div className="min-w-0 flex-1">
-            <h1 className="text-[28px] font-extrabold leading-tight text-navy-800 sm:text-[34px]">¡Bienvenido, Juan!</h1>
+            <h1 className="text-[28px] font-extrabold leading-tight text-navy-800 sm:text-[34px]">¡Bienvenido, {pac?.nombres?.split(' ')[0] ?? 'Juan'}!</h1>
             <p className="text-[16px] text-brand-700 sm:text-[19px]">Tu información de salud, organizada en un solo lugar.</p>
             <div className="mt-3 flex flex-wrap items-center gap-x-8 gap-y-2">
               <div>
-                <p className="text-[19px] font-bold text-navy-800">Juan Pérez Gómez</p>
-                <p className="text-[18px] font-semibold text-brand-700">HN-00012345</p>
+                <p className="text-[19px] font-bold text-navy-800">{pac?.nombre_completo ?? 'Juan Pérez Gómez'}</p>
+                <p className="text-[18px] font-semibold text-brand-700">{pac?.codigo ?? 'HN-00012345'}</p>
               </div>
               <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-1.5 text-[14px] font-medium text-emerald-700">
                 <CheckCircle2 size={18} className="fill-emerald-600 text-white" /> Cuenta activa
               </span>
             </div>
             <div className="mt-3 flex flex-wrap gap-x-7 gap-y-1.5 text-[13.5px] text-slate-600">
-              <span className="inline-flex items-center gap-2"><IdCard size={17} className="text-brand-700" /> Cédula: 001-1567890-1</span>
-              <span className="inline-flex items-center gap-2"><Phone size={16} className="text-brand-700" /> Teléfono: 809-555-1234</span>
-              <span className="inline-flex items-center gap-2"><Calendar size={16} className="text-brand-700" /> Fecha de nacimiento: 12/05/1980 (45 años)</span>
-              <span className="inline-flex items-center gap-2"><span className="text-[17px] leading-none text-brand-700">♂</span> Sexo: Masculino</span>
+              <span className="inline-flex items-center gap-2"><IdCard size={17} className="text-brand-700" /> {pac?.tipo_documento === 'pasaporte' ? 'Pasaporte' : 'Cédula'}: {pac ? formatoCedula(pac.documento) : '001-1567890-1'}</span>
+              <span className="inline-flex items-center gap-2"><Phone size={16} className="text-brand-700" /> Teléfono: {pac ? pac.telefono ?? '—' : '809-555-1234'}</span>
+              <span className="inline-flex items-center gap-2"><Calendar size={16} className="text-brand-700" /> Fecha de nacimiento: {pac ? fechaConEdad(pac.fecha_nacimiento) : '12/05/1980 (45 años)'}</span>
+              <span className="inline-flex items-center gap-2"><span className="text-[17px] leading-none text-brand-700">♂</span> Sexo: {pac ? pac.sexo ?? '—' : 'Masculino'}</span>
             </div>
           </div>
         </div>

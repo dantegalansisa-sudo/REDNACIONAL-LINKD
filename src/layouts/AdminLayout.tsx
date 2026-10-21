@@ -9,6 +9,8 @@ import {
 import { RnsLogo } from '../components/Logo'
 import { BRAND } from '../config/brand'
 import { HelpModal } from '../pages/admin/HelpModal'
+import { RequiereSesion, useSesion } from '../lib/session'
+import { cerrarSesion, supabaseConfigurado } from '../lib/api'
 
 export const ADMIN_NAV: { to: string; label: string; icon: LucideIcon; search: string }[] = [
   { to: '/admin', label: 'Dashboard', icon: Home, search: 'Buscar paciente por RUH, cédula, nombre o teléfono...' },
@@ -65,7 +67,11 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   )
 }
 
-export default function AdminLayout() {
+function AdminShell() {
+  const { sesion } = useSesion()
+  const nombre = sesion?.nombre || 'Juan Pérez'
+  const rolNombre = sesion ? ({ admin: 'Administrador', coordinador: 'Coordinador', operador: 'Operador' } as Record<string, string>)[sesion.rol ?? ''] ?? '' : 'Administrador SNS'
+  const iniciales = nombre.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const [drawer, setDrawer] = useState(false)
@@ -102,10 +108,10 @@ export default function AdminLayout() {
           </button>
           <div className="relative">
             <button onClick={() => setUserMenu(!userMenu)} className="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-slate-50">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-900 text-[13px] font-semibold text-white">JS</span>
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-900 text-[13px] font-semibold text-white">{iniciales}</span>
               <span className="hidden text-left leading-tight sm:block">
-                <span className="block text-[13px] font-semibold text-ink">Juan Pérez</span>
-                <span className="block text-[11px] text-slate-500">Administrador SNS</span>
+                <span className="block text-[13px] font-semibold text-ink">{nombre}</span>
+                <span className="block text-[11px] text-slate-500">{rolNombre}</span>
               </span>
               <ChevronDown size={15} className="hidden sm:block" />
             </button>
@@ -113,7 +119,7 @@ export default function AdminLayout() {
               <div className="absolute right-0 top-12 z-50 w-52 overflow-hidden rounded-xl border border-[#e3eaf6] bg-white py-1 shadow-soft">
                 <button onClick={() => navigate('/admin/administracion')} className="flex w-full items-center gap-2 px-4 py-2 text-[13px] hover:bg-brand-50"><User size={16} /> Mi perfil</button>
                 <button onClick={() => navigate('/admin/configuracion')} className="flex w-full items-center gap-2 px-4 py-2 text-[13px] hover:bg-brand-50"><Settings size={16} /> Configuración</button>
-                <button onClick={() => navigate('/admin/login')} className="flex w-full items-center gap-2 border-t border-[#eef2f8] px-4 py-2 text-[13px] text-red-600 hover:bg-red-50"><LogOut size={16} /> Cerrar sesión</button>
+                <button onClick={async () => { if (supabaseConfigurado) await cerrarSesion(); navigate('/admin/login') }} className="flex w-full items-center gap-2 border-t border-[#eef2f8] px-4 py-2 text-[13px] text-red-600 hover:bg-red-50"><LogOut size={16} /> Cerrar sesión</button>
               </div>
             )}
           </div>
@@ -145,5 +151,13 @@ export default function AdminLayout() {
 
       <HelpModal open={help} onClose={() => setHelp(false)} />
     </div>
+  )
+}
+
+export default function AdminLayout() {
+  return (
+    <RequiereSesion roles={['admin', 'coordinador', 'operador']} login="/admin/login">
+      <AdminShell />
+    </RequiereSesion>
   )
 }

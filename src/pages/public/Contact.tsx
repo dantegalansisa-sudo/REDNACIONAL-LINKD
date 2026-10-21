@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CheckCircle2, ChevronDown, Clock, Mail, MapPin, Phone, Send } from 'lucide-react'
 import PublicLayout, { PageHero, SectionTitle } from '../../layouts/PublicLayout'
+import { enviarContacto, mensajeError, supabaseConfigurado } from '../../lib/api'
 import { BRAND } from '../../config/brand'
 
 const FAQ = [
@@ -12,6 +13,8 @@ const FAQ = [
 
 export default function Contact() {
   const [sent, setSent] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [err, setErr] = useState('')
   const [open, setOpen] = useState<number | null>(0)
   return (
     <PublicLayout>
@@ -19,7 +22,7 @@ export default function Contact() {
       <section className="section-x grid gap-8 py-14 lg:grid-cols-[1fr_1.3fr]">
         <div className="space-y-4">
           <SectionTitle>Información de contacto</SectionTitle>
-          {[[Phone, 'Teléfono', BRAND.supportPhone], [Mail, 'Correo electrónico', BRAND.contactEmail], [MapPin, 'Dirección', 'Santo Domingo, República Dominicana'], [Clock, 'Soporte técnico', '24/7 — ' + BRAND.supportEmail]].map(([I, l, v]) => {
+          {[[Phone, 'Teléfono', BRAND.supportPhone], [Mail, 'Correo electrónico', BRAND.contactEmail], [MapPin, 'Dirección', BRAND.address], [Clock, 'Horario de atención', BRAND.hours]].map(([I, l, v]) => {
             const Icon = I as typeof Phone
             return (
               <div key={l as string} className="card flex items-center gap-4 p-4">
@@ -38,16 +41,29 @@ export default function Contact() {
               <button onClick={() => setSent(false)} className="btn-outline mt-6">Enviar otro mensaje</button>
             </div>
           ) : (
-            <form onSubmit={(e) => { e.preventDefault(); setSent(true) }} className="grid gap-4 sm:grid-cols-2">
+            <form onSubmit={async (e) => {
+              e.preventDefault()
+              const fd = new FormData(e.currentTarget)
+              const v = (k: string) => String(fd.get(k) ?? '').trim()
+              setErr('')
+              if (supabaseConfigurado) {
+                setEnviando(true)
+                try { await enviarContacto({ nombre: v('nombre'), correo: v('correo'), telefono: v('telefono'), tipo: v('tipo'), mensaje: v('mensaje') }) }
+                catch (error) { setEnviando(false); return setErr(mensajeError(error)) }
+                setEnviando(false)
+              }
+              setSent(true)
+            }} className="grid gap-4 sm:grid-cols-2">
               <h3 className="text-[22px] font-bold sm:col-span-2">Envíanos un mensaje</h3>
-              <label><span className="label">Nombre completo <span className="req">*</span></span><input required className="input !py-2.5" /></label>
-              <label><span className="label">Correo electrónico <span className="req">*</span></span><input required type="email" className="input !py-2.5" /></label>
-              <label><span className="label">Teléfono</span><input className="input !py-2.5" /></label>
+              <label><span className="label">Nombre completo <span className="req">*</span></span><input required name="nombre" className="input !py-2.5" /></label>
+              <label><span className="label">Correo electrónico <span className="req">*</span></span><input required name="correo" type="email" className="input !py-2.5" /></label>
+              <label><span className="label">Teléfono</span><input name="telefono" className="input !py-2.5" /></label>
               <label><span className="label">Tipo de consulta</span>
-                <span className="relative flex items-center"><select className="input appearance-none !py-2.5"><option>Información general</option><option>Pacientes</option><option>Médicos</option><option>Hospitales</option><option>Soporte técnico</option></select><ChevronDown size={16} className="pointer-events-none absolute right-3" /></span>
+                <span className="relative flex items-center"><select name="tipo" className="input appearance-none !py-2.5"><option>Información general</option><option>Pacientes</option><option>Médicos</option><option>Hospitales</option><option>Soporte técnico</option></select><ChevronDown size={16} className="pointer-events-none absolute right-3" /></span>
               </label>
-              <label className="sm:col-span-2"><span className="label">Mensaje <span className="req">*</span></span><textarea required rows={5} className="input" /></label>
-              <button className="btn-primary btn-pill !py-3 !text-[15px] sm:col-span-2 sm:w-fit sm:!px-10"><Send size={17} /> Enviar mensaje</button>
+              <label className="sm:col-span-2"><span className="label">Mensaje <span className="req">*</span></span><textarea required name="mensaje" rows={5} className="input" /></label>
+              {err && <p className="text-[13px] text-red-600 sm:col-span-2">{err}</p>}
+              <button disabled={enviando} className="btn-primary btn-pill !py-3 !text-[15px] sm:col-span-2 sm:w-fit sm:!px-10"><Send size={17} /> {enviando ? 'Enviando…' : 'Enviar mensaje'}</button>
             </form>
           )}
         </div>

@@ -1,3 +1,5 @@
+import { fechaConEdad, formatoCedula, useSesion } from '../../lib/session'
+import { actualizarPaciente, mensajeError, supabaseConfigurado } from '../../lib/api'
 import { useState, type ReactNode } from 'react'
 import { CheckCircle2, Home, Laptop, Mail, MessageCircle, Pencil, Phone, Save, Shield, ShieldCheck, Smartphone, User, UserRound, type LucideIcon } from 'lucide-react'
 import { Badge, InfoRow, Toggle, UserSilhouette } from '../../components/ui'
@@ -17,15 +19,16 @@ function Card({ icon: Icon, title, action, children }: { icon: LucideIcon; title
 
 type Editable = Record<string, string>
 
-function EditableCard({ icon, title, fields, initial }: { icon: LucideIcon; title: string; fields: { key: string; label: string; type?: string }[]; initial: Editable }) {
+function EditableCard({ icon, title, fields, initial, onSave }: { icon: LucideIcon; title: string; fields: { key: string; label: string; type?: string }[]; initial: Editable; onSave?: (d: Editable) => Promise<void> }) {
   const [edit, setEdit] = useState(false)
   const [data, setData] = useState(initial)
   const [draft, setDraft] = useState(initial)
   const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState('')
   return (
     <Card icon={icon} title={title} action={!edit && <button onClick={() => { setDraft(data); setEdit(true); setSaved(false) }} className="btn-ghost !px-2.5 !py-1 !text-[12.5px]"><Pencil size={14} /> Editar</button>}>
       {edit ? (
-        <form onSubmit={(e) => { e.preventDefault(); setData(draft); setEdit(false); setSaved(true) }} className="space-y-3">
+        <form onSubmit={async (e) => { e.preventDefault(); setErr(''); try { await onSave?.(draft); setData(draft); setEdit(false); setSaved(true) } catch (error) { setErr(mensajeError(error)) } }} className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             {fields.map((f) => (
               <div key={f.key}>
@@ -34,6 +37,7 @@ function EditableCard({ icon, title, fields, initial }: { icon: LucideIcon; titl
               </div>
             ))}
           </div>
+          {err && <p className="text-[12.5px] text-red-600">{err}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setEdit(false)} className="btn-outline">Cancelar</button>
             <button className="btn-primary"><Save size={15} /> Guardar cambios</button>
@@ -55,6 +59,11 @@ const SESSIONS = [
 ]
 
 export default function Perfil() {
+  const pac = useSesion().sesion?.paciente
+  const guardar = (map: Record<string, string>) => async (d: Editable) => {
+    if (!supabaseConfigurado || !pac) return
+    await actualizarPaciente(pac.id, Object.fromEntries(Object.entries(map).map(([k, col]) => [col, d[k] ?? ''])))
+  }
   const [twoFA, setTwoFA] = useState(false)
   const [alerts, setAlerts] = useState(true)
   return (
@@ -64,8 +73,8 @@ export default function Perfil() {
       <section className="card mb-4 flex flex-col items-center gap-5 p-5 sm:flex-row">
         <UserSilhouette size={110} />
         <div className="min-w-0 flex-1 text-center sm:text-left">
-          <h2 className="text-[24px] font-bold text-navy-800">Juan Pérez Gómez</h2>
-          <p className="text-[16px] font-semibold text-brand-700">HN-00012345</p>
+          <h2 className="text-[24px] font-bold text-navy-800">{pac?.nombre_completo ?? 'Juan Pérez Gómez'}</h2>
+          <p className="text-[16px] font-semibold text-brand-700">{pac?.codigo ?? 'HN-00012345'}</p>
           <div className="mt-2 flex flex-wrap justify-center gap-2 sm:justify-start">
             <Badge tone="green" icon>Cuenta activa</Badge>
             <Badge tone="blue">Paciente desde 15/01/2023</Badge>
@@ -80,10 +89,10 @@ export default function Perfil() {
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card icon={UserRound} title="Datos personales">
-          <InfoRow label="Nombre completo">Juan Pérez Gómez</InfoRow>
-          <InfoRow label="Cédula">001-1567890-1</InfoRow>
-          <InfoRow label="Fecha de nacimiento">12/05/1980 (45 años)</InfoRow>
-          <InfoRow label="Sexo">Masculino</InfoRow>
+          <InfoRow label="Nombre completo">{pac?.nombre_completo ?? 'Juan Pérez Gómez'}</InfoRow>
+          <InfoRow label={pac?.tipo_documento === 'pasaporte' ? 'Pasaporte' : 'Cédula'}>{pac ? formatoCedula(pac.documento) : '001-1567890-1'}</InfoRow>
+          <InfoRow label="Fecha de nacimiento">{pac ? fechaConEdad(pac.fecha_nacimiento) : '12/05/1980 (45 años)'}</InfoRow>
+          <InfoRow label="Sexo">{pac ? pac.sexo ?? '—' : 'Masculino'}</InfoRow>
           <InfoRow label="Nacionalidad">Dominicana</InfoRow>
           <InfoRow label="Seguro médico">SENASA · Contributivo</InfoRow>
           <p className="mt-3 text-[12px] text-slate-500">Para corregir datos de identidad, acude al área de admisión de cualquier hospital de la red con tu cédula.</p>
@@ -91,7 +100,8 @@ export default function Perfil() {
 
         <EditableCard icon={Phone} title="Contacto"
           fields={[{ key: 'phone', label: 'Teléfono', type: 'tel' }, { key: 'wa', label: 'WhatsApp', type: 'tel' }, { key: 'mail', label: 'Correo electrónico', type: 'email' }, { key: 'alt', label: 'Teléfono alternativo', type: 'tel' }]}
-          initial={{ phone: '809-555-1234', wa: '809-555-1234', mail: 'juan.perez@correo.com', alt: '' }} />
+          initial={pac ? { phone: pac.telefono ?? '', wa: pac.whatsapp ?? '', mail: pac.correo ?? '', alt: '' } : { phone: '809-555-1234', wa: '809-555-1234', mail: 'juan.perez@correo.com', alt: '' }}
+          onSave={guardar({ phone: 'telefono', wa: 'whatsapp', mail: 'correo' })} />
 
         <EditableCard icon={Home} title="Dirección"
           fields={[{ key: 'street', label: 'Calle y número' }, { key: 'sector', label: 'Sector' }, { key: 'city', label: 'Municipio' }, { key: 'prov', label: 'Provincia' }]}

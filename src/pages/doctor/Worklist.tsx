@@ -4,7 +4,7 @@ import {
 } from 'lucide-react'
 import { Badge, Modal, Modality, Select, Table, clsx, type Tone } from '../../components/ui'
 import { PortalHeading } from '../patient/PatientPortal'
-import { RoleNotice, useDoctorRole, DOCTORS } from './DoctorPortal'
+import { RoleNotice, useDoctorRole, useDoctorInfo } from './DoctorPortal'
 
 export type Priority = 'Urgente' | 'Alta' | 'Normal'
 export type WorkItem = {
@@ -29,6 +29,7 @@ const STATUS_TONE: Record<WorkItem['status'], Tone> = { Pendiente: 'gray', 'En l
 
 /* ---------- Modal: redactar informe ---------- */
 export function ReportEditor({ item, onClose, onSaved }: { item: WorkItem | null; onClose: () => void; onSaved?: (id: string, status: WorkItem['status']) => void }) {
+  const firma = useDoctorInfo()
   const [tech, setTech] = useState('')
   const [find, setFind] = useState('')
   const [imp, setImp] = useState('')
@@ -115,7 +116,7 @@ export function ReportEditor({ item, onClose, onSaved }: { item: WorkItem | null
                 {msg === 'signed' && <p className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-700"><CheckCircle2 size={15} /> Informe firmado y publicado. El paciente y el referidor fueron notificados.</p>}
               </div>
               <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-[#e6edf8] bg-[#f7faff] px-5 py-3">
-                <p className="text-[12px] text-slate-500">Firma: {DOCTORS.radiologo.name} · Exequátur {DOCTORS.radiologo.exequatur}</p>
+                <p className="text-[12px] text-slate-500">Firma: {firma.name} · Exequátur {firma.exequatur}</p>
                 <div className="flex gap-2">
                   <button disabled={msg === 'signed'} onClick={() => { setMsg('draft'); onSaved?.(item.id, 'Borrador') }} className="btn-outline"><Save size={16} /> Guardar borrador</button>
                   <button disabled={!canSign || msg === 'signed'} onClick={() => setConfirm(true)} className="btn-primary"><FileSignature size={16} /> Firmar y publicar</button>

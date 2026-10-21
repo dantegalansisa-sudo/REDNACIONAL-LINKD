@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { SolicitudesRegistro } from './SolicitudesRegistro'
 import {
   AlertCircle, Building2, CheckCircle2, ChevronDown, Clock, Download, FileCheck2, FileText, Hospital, LineChart,
-  Mail, Megaphone, MoreVertical, Pencil, Plus, Star, UserPlus, UserRound, ClipboardList,
+  Mail, Megaphone, MoreVertical, Pencil, Plus, Star, UserRound, ClipboardList,
 } from 'lucide-react'
 import {
   Badge, Checkbox, DotsButton, InfoRow, Kpi, Modality, MoreLink, PageHeader, Pagination, Panel, SearchInput, Select,
@@ -283,21 +284,7 @@ export default function Radiologos() {
                 </tbody>
               </Table>
             </Panel>
-            <Panel title="Últimas solicitudes de registro" icon={UserPlus} action={<MoreLink>Ver todas</MoreLink>} bodyClass="px-0 pb-2">
-              <Table>
-                <thead className="bg-[#f6f9fe]"><tr>{['Fecha', 'Nombre', 'Especialidad', 'Estado'].map((x) => <th key={x} className="th">{x}</th>)}</tr></thead>
-                <tbody>
-                  {solicitudes.map((s) => (
-                    <tr key={s.f} className="tr">
-                      <td className="td whitespace-nowrap tabular-nums">{s.f}</td>
-                      <td className="td whitespace-nowrap">{s.n}</td>
-                      <td className="td">{s.e}</td>
-                      <td className="td"><Badge tone={s.s === 'Aprobado' ? 'green' : 'orange'}>{s.s}</Badge></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </Panel>
+            <SolicitudesRegistro demo={solicitudes} />
           </div>
         </div>
 

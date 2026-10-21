@@ -38,7 +38,7 @@ export default function Medicos() {
             <div>
               <h3 className="mb-2 text-[15px] font-bold text-navy-800">Contacto</h3>
               <InfoRow label={<span className="flex items-center gap-1.5"><Phone size={14} /> Teléfono</span>}>809-555-1098</InfoRow>
-              <InfoRow label={<span className="flex items-center gap-1.5"><Mail size={14} /> Correo</span>}>lgonzalez@rednacionalsalud.do</InfoRow>
+              <InfoRow label={<span className="flex items-center gap-1.5"><Mail size={14} /> Correo</span>}>lgonzalez@rednacionalsalud.com</InfoRow>
               <InfoRow label={<span className="flex items-center gap-1.5"><Building2 size={14} /> Hospitales</span>}>Hugo Mendoza, Hospital General</InfoRow>
               <InfoRow label={<span className="flex items-center gap-1.5"><Award size={14} /> En la red desde</span>}>Enero 2023</InfoRow>
             </div>

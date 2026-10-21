@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { loginPaciente, mensajeError, solicitarCodigoPaciente, supabaseConfigurado } from '../../lib/api'
 import { AlertCircle, ArrowRight, BarChart3, CalendarDays, Eye, EyeOff, FileText, HeartPulse, Lock, ShieldPlus, User, Users, type LucideIcon } from 'lucide-react'
 import { PublicFooter, PublicHeader } from '../../layouts/PublicLayout'
 import { Modal } from '../../components/ui'
@@ -49,11 +50,18 @@ export default function PatientLogin() {
   const [forgot, setForgot] = useState(false)
   const [sent, setSent] = useState(false)
 
-  const submit = (e: React.FormEvent) => {
+  const [cargando, setCargando] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!/^RNS-?\d{5,}$/i.test(user.trim())) return setError('Ingresa un código de paciente válido (ej. RNS-00012345).')
     if (pass.trim().length < 6) return setError('Ingresa tu clave (cédula o pasaporte).')
     setError('')
+    if (supabaseConfigurado) {
+      setCargando(true)
+      try { await loginPaciente(user.trim().replace(/^RNS-?/i, 'RNS-'), pass) } catch (err) { setCargando(false); return setError(mensajeError(err)) }
+      setCargando(false)
+    }
     navigate('/paciente')
   }
 
@@ -82,7 +90,7 @@ export default function PatientLogin() {
             <p className="text-[14px] text-ink/80"><b className="text-orange-600 underline">Nota importante</b><br />En tu primer acceso, utiliza tu número de cédula o pasaporte como contraseña. Te recomendamos cambiar tu contraseña luego en tu perfil, en la sección <span className="text-brand-700">Seguridad</span>.</p>
           </div>
           {error && <p className="mt-3 text-[14px] text-red-600">{error}</p>}
-          <button type="submit" className="mt-5 flex w-full items-center justify-center gap-3 rounded-full bg-brand-600 py-4 text-[21px] font-medium text-white hover:bg-brand-700">Iniciar sesión <ArrowRight size={22} /></button>
+          <button type="submit" disabled={cargando} className="mt-5 flex w-full items-center justify-center gap-3 rounded-full bg-brand-600 py-4 text-[21px] font-medium text-white hover:bg-brand-700 disabled:opacity-60">{cargando ? 'Ingresando…' : 'Iniciar sesión'} <ArrowRight size={22} /></button>
           <div className="mt-5 text-center"><button type="button" onClick={() => setForgot(true)} className="text-[17px] text-brand-700 underline">¿Olvidaste tu código de paciente?</button></div>
           <p className="mt-3 text-center text-[14px] text-slate-500">¿No tienes cuenta? <Link to="/registro/paciente" className="font-semibold text-brand-700">Regístrate aquí</Link></p>
         </form>
@@ -92,11 +100,16 @@ export default function PatientLogin() {
       <div className="p-7">
         <h3 className="text-[24px] font-bold text-ink">Recuperar código de paciente</h3>
         {sent ? (
-          <p className="mt-3 text-[15px] text-ink/80">Si los datos coinciden con un paciente registrado, enviaremos tu código por WhatsApp y correo electrónico.</p>
+          <p className="mt-3 text-[15px] text-ink/80">Si los datos coinciden con un paciente registrado con correo electrónico, te enviaremos tu código a ese correo. Si no registraste correo, acude a admisión de cualquier hospital de la red.</p>
         ) : (
-          <form onSubmit={(e) => { e.preventDefault(); setSent(true) }}>
-            <p className="mt-2 text-[14px] text-slate-500">Ingresa tu cédula o pasaporte y te enviaremos tu código a los medios registrados.</p>
-            <input required className="input mt-4 !py-3" placeholder="Cédula o pasaporte" />
+          <form onSubmit={async (e) => {
+            e.preventDefault()
+            const doc = new FormData(e.currentTarget).get('doc') as string
+            if (supabaseConfigurado) { try { await solicitarCodigoPaciente(doc) } catch { /* respuesta genérica por privacidad */ } }
+            setSent(true)
+          }}>
+            <p className="mt-2 text-[14px] text-slate-500">Ingresa tu cédula o pasaporte y te enviaremos tu código al correo registrado.</p>
+            <input required name="doc" className="input mt-4 !py-3" placeholder="Cédula o pasaporte" />
             <button className="btn-primary btn-pill mt-4 w-full !py-3 !text-[16px]">Enviar código</button>
           </form>
         )}

@@ -4,13 +4,13 @@ import {
   ArrowRight, Building2, Calendar, CheckCircle2, ChevronRight, ClipboardList, Clock, FilePlus2, FileText, Hourglass, MapPin,
   Megaphone, TrendingUp, Users, type LucideIcon,
 } from 'lucide-react'
-import { Badge, Modality, Table, clsx, type Tone } from '../../components/ui'
+import { Badge, Modality, Table, UserSilhouette, clsx, type Tone } from '../../components/ui'
 import { Bars } from '../../components/charts'
 import { ReportModal, STUDIES, type Study } from '../patient/PatientPortal'
-import { DOCTORS, RoleSwitcher, useDoctorRole } from './DoctorPortal'
+import { RoleSwitcher, useDoctorInfo, useDoctorRole } from './DoctorPortal'
 import { PRIORITY_TONE, ReportEditor, WORKLIST, type WorkItem } from './Worklist'
 
-function Welcome({ name, photo, subtitle, code, extra }: { name: string; photo: string; subtitle: string; code: string; extra: ReactNode }) {
+function Welcome({ name, photo, subtitle, code, extra }: { name: string; photo: string | null; subtitle: string; code: string; extra: ReactNode }) {
   return (
     <section className="relative overflow-hidden rounded-2xl border border-[#e6edf8] bg-white shadow-card">
       <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[48%] md:block">
@@ -18,7 +18,7 @@ function Welcome({ name, photo, subtitle, code, extra }: { name: string; photo: 
         <div className="absolute inset-0 bg-gradient-to-r from-white via-white/75 to-white/10" />
       </div>
       <div className="relative flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:gap-6 sm:p-5">
-        <img src={photo} alt={name} className="mx-auto h-[130px] w-[130px] shrink-0 rounded-full border-4 border-brand-100 object-cover sm:mx-0" />
+        {photo ? <img src={photo} alt={name} className="mx-auto h-[130px] w-[130px] shrink-0 rounded-full border-4 border-brand-100 object-cover sm:mx-0" /> : <UserSilhouette size={130} className="mx-auto sm:mx-0" />}
         <div className="min-w-0 flex-1">
           <h1 className="text-[26px] font-extrabold leading-tight text-navy-800 sm:text-[32px]">¡Bienvenido, {name}!</h1>
           <p className="text-[15px] text-brand-700 sm:text-[18px]">{subtitle}</p>
@@ -72,12 +72,12 @@ const RAD_CALLS = [
 ]
 
 function RadiologoResumen() {
-  const d = DOCTORS.radiologo
+  const d = useDoctorInfo()
   const [open, setOpen] = useState<WorkItem | null>(null)
   const top = WORKLIST.filter((w) => w.priority !== 'Normal').slice(0, 5)
   return (
     <div className="space-y-4">
-      <Welcome name={`Dr. ${d.first}`} photo={d.photo} subtitle="Tu lista de lectura y rendimiento, en tiempo real." code={`${d.code} · Exequátur ${d.exequatur}`}
+      <Welcome name={`${d.name.split(' ')[0]} ${d.first}`} photo={d.photo} subtitle="Tu lista de lectura y rendimiento, en tiempo real." code={`${d.code} · Exequátur ${d.exequatur}`}
         extra={<>
           <span className="inline-flex items-center gap-1.5"><FileText size={15} className="text-brand-700" /> {d.specialty}</span>
           <span className="inline-flex items-center gap-1.5"><MapPin size={15} className="text-brand-700" /> Región Ozama · Cibao Norte</span>
@@ -176,7 +176,7 @@ const REFS: { patient: string; record: string; study: string; mod: string; date:
 ]
 
 function ReferidorResumen() {
-  const d = DOCTORS.referidor
+  const d = useDoctorInfo()
   const [report, setReport] = useState<Study | null>(null)
   const [who, setWho] = useState(0)
   const results = STUDIES.slice(0, 4)
@@ -184,7 +184,7 @@ function ReferidorResumen() {
   const recs = ['HN-00012345', 'HN-00060012', 'HN-00028871', 'HN-00047719']
   return (
     <div className="space-y-4">
-      <Welcome name={`Dr. ${d.first}`} photo={d.photo} subtitle="Sigue a tus pacientes referidos y sus resultados." code={`${d.code} · Exequátur ${d.exequatur}`}
+      <Welcome name={`${d.name.split(' ')[0]} ${d.first}`} photo={d.photo} subtitle="Sigue a tus pacientes referidos y sus resultados." code={`${d.code} · Exequátur ${d.exequatur}`}
         extra={<>
           <span className="inline-flex items-center gap-1.5"><FileText size={15} className="text-brand-700" /> {d.specialty}</span>
           <span className="inline-flex items-center gap-1.5"><MapPin size={15} className="text-brand-700" /> Santo Domingo, Distrito Nacional</span>

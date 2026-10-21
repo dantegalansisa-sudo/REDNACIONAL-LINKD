@@ -10,6 +10,7 @@ const Contact = lazy(() => import('./pages/public/Contact'))
 const PatientLogin = lazy(() => import('./pages/public/PatientLogin'))
 const DoctorLogin = lazy(() => import('./pages/public/DoctorLogin'))
 const AdminLogin = lazy(() => import('./pages/public/AdminLogin'))
+const CrearClave = lazy(() => import('./pages/public/CrearClave'))
 
 const PatientPortal = lazy(() => import('./pages/patient/PatientPortal'))
 const PResumen = lazy(() => import('./pages/patient/Resumen'))
@@ -83,6 +84,7 @@ export default function App() {
 
         {/* Portal del médico (radiólogo / referidor) */}
         <Route path="/medico/login" element={<DoctorLogin />} />
+        <Route path="/medico/crear-clave" element={<CrearClave />} />
         <Route path="/medico" element={<DoctorPortal />}>
           <Route index element={<DResumen />} />
           <Route path="lista-de-trabajo" element={<DWorklist />} />

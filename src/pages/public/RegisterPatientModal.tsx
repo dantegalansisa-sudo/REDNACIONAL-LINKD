@@ -9,10 +9,10 @@ import { Modal } from '../../components/ui'
 import { Logo } from '../../components/Logo'
 import { PROVINCIAS, municipiosDe, sectoresDe } from '../../data/geo'
 import { BlockHead, Field, IconInput, NativeSelect, RegStepper, WhatsAppIcon } from './RegisterShared'
+import { documentoRegistrado, mensajeError, registrarPaciente, supabaseConfigurado } from '../../lib/api'
 
-/** Simula la validación contra el padrón (en producción: API JCE / base de datos de pacientes) */
-const PADRON = { nombres: 'Juan Carlos', apellidos: 'Pérez Martínez', nacimiento: '15/03/1980', sexo: 'Masculino', nacionalidad: 'Dominicana', foto: '/img/crops/paciente-juan.webp' }
-const CODIGO = 'RNS-00012345'
+// Los datos personales los escribe el paciente (cuando exista convenio con la JCE se podrán autocompletar).
+const CODIGO_DEMO = 'RNS-00012345'
 
 const LEFT = [
   {
@@ -30,7 +30,8 @@ const LEFT = [
 ] as const
 
 const initial = {
-  docTipo: 'Cédula' as 'Cédula' | 'Pasaporte', doc: '', tel: '', wa: '', email: '',
+  docTipo: 'Cédula' as 'Cédula' | 'Pasaporte', doc: '', nombres: '', apellidos: '', nacimiento: '', sexo: '', nacionalidad: 'Dominicana',
+  tel: '', wa: '', email: '',
   provincia: '', municipio: '', sector: '', calle: '', numero: '', apto: '', referencia: '',
   ocupacion: '', civil: '', emergencia: '', parentesco: '',
 }
@@ -53,21 +54,55 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
   const [terms, setTerms] = useState([false, false])
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [copied, setCopied] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [errorEnvio, setErrorEnvio] = useState('')
+  const [codigo, setCodigo] = useState(CODIGO_DEMO)
+  const CODIGO = codigo
   const set = (k: keyof typeof initial, v: string) => setF((p) => ({ ...p, [k]: v }))
 
-  const close = () => { setStep(0); setF(initial); setTerms([false, false]); setErrors({}); onClose() }
+  const close = () => { setStep(0); setF(initial); setTerms([false, false]); setErrors({}); setErrorEnvio(''); setEnviando(false); onClose() }
 
-  const verify = () => {
-    const digits = f.doc.replace(/\W/g, '')
-    if (f.docTipo === 'Cédula' ? digits.length !== 11 : digits.length < 6) {
-      setErrors({ doc: f.docTipo === 'Cédula' ? 'Ingrese una cédula válida de 11 dígitos' : 'Ingrese un número de pasaporte válido' })
+  const verify = async () => {
+    const digits = f.docTipo === 'Cédula' ? f.doc.replace(/\D/g, '') : f.doc.replace(/\W/g, '')
+    if (f.docTipo === 'Cédula' ? digits.length !== 11 : digits.length < 8) {
+      setErrors({ doc: f.docTipo === 'Cédula' ? 'Ingrese una cédula válida de 11 dígitos' : 'Ingrese un número de pasaporte válido (mínimo 8 caracteres)' })
       return
+    }
+    if (supabaseConfigurado) {
+      setEnviando(true)
+      try {
+        if (await documentoRegistrado(f.docTipo === 'Cédula' ? 'cedula' : 'pasaporte', f.doc)) {
+          setErrors({ doc: 'Este documento ya está registrado. Inicia sesión con tu código de paciente.' })
+          return
+        }
+      } catch (err) { setErrors({ doc: mensajeError(err) }); return } finally { setEnviando(false) }
     }
     setErrors({}); setStep(1)
   }
 
+  const finalizar = async () => {
+    setErrorEnvio('')
+    if (!supabaseConfigurado) { setStep(3); return }
+    setEnviando(true)
+    try {
+      const cod = await registrarPaciente({
+        tipo_documento: f.docTipo === 'Cédula' ? 'cedula' : 'pasaporte', documento: f.doc,
+        nombres: f.nombres.trim(), apellidos: f.apellidos.trim(), fecha_nacimiento: f.nacimiento, sexo: f.sexo, nacionalidad: f.nacionalidad,
+        telefono: f.tel, whatsapp: f.wa, correo: f.email.trim(),
+        provincia: f.provincia, municipio: f.municipio, sector: f.sector, calle: f.calle, numero: f.numero, apartamento: f.apto, referencia: f.referencia,
+        ocupacion: f.ocupacion, estado_civil: f.civil, emergencia_telefono: f.emergencia, emergencia_parentesco: f.parentesco,
+      })
+      setCodigo(cod)
+      setStep(3)
+    } catch (err) { setErrorEnvio(mensajeError(err)) } finally { setEnviando(false) }
+  }
+
   const validateInfo = () => {
     const e: Record<string, string> = {}
+    if (!f.nombres.trim()) e.nombres = 'Requerido'
+    if (!f.apellidos.trim()) e.apellidos = 'Requerido'
+    if (!f.nacimiento) e.nacimiento = 'Requerido'
+    if (!f.sexo) e.sexo = 'Requerido'
     if (!/^\d{3}-?\d{3}-?\d{4}$/.test(f.tel.trim())) e.tel = 'Teléfono inválido'
     if (f.email && !/^\S+@\S+\.\S+$/.test(f.email)) e.email = 'Correo inválido'
     ;(['provincia', 'municipio', 'sector', 'calle'] as const).forEach((k) => { if (!f[k]) e[k] = 'Requerido' })
@@ -135,8 +170,8 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
                 <IconInput icon={IdCard} value={f.doc} onChange={(e) => set('doc', e.target.value)} onKeyDown={(e) => e.key === 'Enter' && verify()}
                   placeholder={`Ingrese su número de ${f.docTipo === 'Cédula' ? 'cédula' : 'pasaporte'}`} className="!py-3.5 !text-[17px]" />
                 {errors.doc && <p className="mt-1 text-[13px] text-red-600">{errors.doc}</p>}
-                <button onClick={verify} className="mt-6 flex w-full items-center justify-center gap-3 rounded-full bg-brand-600 py-4 text-[20px] font-medium text-white hover:bg-brand-700">
-                  Verificar y continuar <ArrowRight size={22} />
+                <button onClick={verify} disabled={enviando} className="mt-6 flex w-full items-center justify-center gap-3 rounded-full bg-brand-600 py-4 text-[20px] font-medium text-white hover:bg-brand-700 disabled:opacity-60">
+                  {enviando ? 'Verificando…' : 'Verificar y continuar'} <ArrowRight size={22} />
                 </button>
               </div>
               <div className="mt-4 flex gap-4 rounded-xl border border-[#e3eaf6] bg-[#f6f9fe] p-5">
@@ -157,17 +192,14 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
               <p className="mt-1 text-[19px] text-slate-500">Complete sus datos personales y de contacto.</p>
               <div className="mt-3 space-y-3">
                 <section className="rounded-xl border border-[#e6edf8]">
-                  <BlockHead icon={User} title="Datos del paciente" extra={<span className="font-normal text-slate-500">(cargados automáticamente)</span>} />
-                  <div className="grid gap-3 p-3 sm:grid-cols-[140px_1fr]">
-                    <img src={PADRON.foto} alt="" className="h-[136px] w-[140px] rounded-lg object-cover" />
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <Field label="Cédula" req><input className="input-ro" readOnly value={docFmt} /></Field>
-                      <Field label="Nombres"><input className="input-ro" readOnly value={PADRON.nombres} /></Field>
-                      <Field label="Apellidos"><input className="input-ro" readOnly value={PADRON.apellidos} /></Field>
-                      <Field label="Fecha de nacimiento"><input className="input-ro" readOnly value={PADRON.nacimiento} /></Field>
-                      <Field label="Sexo"><input className="input-ro" readOnly value={PADRON.sexo} /></Field>
-                      <Field label="Nacionalidad"><input className="input-ro" readOnly value={PADRON.nacionalidad} /></Field>
-                    </div>
+                  <BlockHead icon={User} title="Datos del paciente" extra={<span className="font-normal text-slate-500">(tal como aparecen en su documento)</span>} />
+                  <div className="grid gap-3 p-3 sm:grid-cols-3">
+                    <Field label={f.docTipo} req><input className="input-ro" readOnly value={docFmt} /></Field>
+                    <Field label="Nombres" req error={errors.nombres}><input className="input" value={f.nombres} onChange={(e) => set('nombres', e.target.value)} placeholder="Nombres" /></Field>
+                    <Field label="Apellidos" req error={errors.apellidos}><input className="input" value={f.apellidos} onChange={(e) => set('apellidos', e.target.value)} placeholder="Apellidos" /></Field>
+                    <Field label="Fecha de nacimiento" req error={errors.nacimiento}><input type="date" className="input" value={f.nacimiento} max={new Date().toISOString().slice(0, 10)} onChange={(e) => set('nacimiento', e.target.value)} /></Field>
+                    <Field label="Sexo" req error={errors.sexo}><NativeSelect value={f.sexo} onChange={(v) => set('sexo', v)} options={['Masculino', 'Femenino']} placeholder="Seleccione" /></Field>
+                    <Field label="Nacionalidad"><input className="input" value={f.nacionalidad} onChange={(e) => set('nacionalidad', e.target.value)} /></Field>
                   </div>
                 </section>
                 <section className="rounded-xl border border-[#e6edf8]">
@@ -218,12 +250,9 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
                 <div className="space-y-3">
                   <section className="rounded-xl border border-[#e6edf8]">
                     <BlockHead icon={User} title="Datos del paciente" />
-                    <div className="grid gap-3 p-3 sm:grid-cols-[125px_1fr]">
-                      <img src={PADRON.foto} alt="" className="h-[136px] w-[125px] rounded-lg object-cover" />
-                      <div className="grid grid-cols-3 gap-3">
-                        <ReadItem label="Cédula" value={docFmt} /><ReadItem label="Nombres" value={PADRON.nombres} /><ReadItem label="Apellidos" value={PADRON.apellidos} />
-                        <ReadItem label="Fecha de nacimiento" value={PADRON.nacimiento} /><ReadItem label="Sexo" value={PADRON.sexo} /><ReadItem label="Nacionalidad" value={PADRON.nacionalidad} />
-                      </div>
+                    <div className="grid grid-cols-3 gap-3 p-3">
+                      <ReadItem label={f.docTipo} value={docFmt} /><ReadItem label="Nombres" value={f.nombres} /><ReadItem label="Apellidos" value={f.apellidos} />
+                      <ReadItem label="Fecha de nacimiento" value={f.nacimiento ? f.nacimiento.split('-').reverse().join('/') : ''} /><ReadItem label="Sexo" value={f.sexo} /><ReadItem label="Nacionalidad" value={f.nacionalidad} />
                     </div>
                   </section>
                   <section className="rounded-xl border border-[#e6edf8]">
@@ -253,10 +282,10 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
                   <section className="rounded-xl border border-[#e6edf8]">
                     <BlockHead icon={FileText} title="Documentos y verificación" />
                     <div className="p-3">
-                      <p className="text-[14px] text-slate-500">No se requieren documentos adicionales en este registro. Su identidad ha sido validada con la cédula ingresada.</p>
+                      <p className="text-[14px] text-slate-500">No se requieren documentos adicionales en este registro. Su identidad se confirma con el documento ingresado al momento de su atención en el centro de salud.</p>
                       <div className="mt-3 flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
                         <CheckCircle2 size={34} className="shrink-0 fill-emerald-500 text-white" />
-                        <span><b className="block text-[16px] text-emerald-700">Identidad verificada</b><span className="text-[13px] text-slate-500">Sus datos han sido validados correctamente en la base de datos oficial.</span></span>
+                        <span><b className="block text-[16px] text-emerald-700">Documento disponible</b><span className="text-[13px] text-slate-500">Este documento no estaba registrado en la red. Puede continuar con su registro.</span></span>
                       </div>
                     </div>
                   </section>
@@ -306,8 +335,8 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
                   </div>
                 </div>
                 <div className="flex gap-4 border-[#cfdcf2] md:border-l md:pl-6">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white"><Phone size={20} fill="currentColor" /></span>
-                  <div><div className="text-[15px] font-bold leading-tight text-ink">Información enviada por WhatsApp</div><p className="mt-1.5 text-[13px] text-ink/70">También hemos enviado tu código de paciente y estas instrucciones a tu número de WhatsApp registrado.</p></div>
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white"><Mail size={20} /></span>
+                  <div><div className="text-[15px] font-bold leading-tight text-ink">Información enviada por correo</div><p className="mt-1.5 text-[13px] text-ink/70">Si registraste un correo electrónico, también te enviamos tu código de paciente y estas instrucciones.</p></div>
                 </div>
               </div>
               <div className="mt-3 grid items-center gap-4 rounded-xl bg-[#eef4fd] p-4 md:grid-cols-[1.6fr_1fr]">
@@ -342,7 +371,10 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
               <button onClick={() => { setErrors({}); setStep(step - 1) }} className="flex items-center gap-3 rounded-full border-2 border-brand-600 px-8 py-2.5 text-[18px] font-medium text-brand-700 hover:bg-brand-50"><ArrowLeft size={20} /> Anterior</button>
               {step === 1
                 ? <button onClick={() => validateInfo() && setStep(2)} className="flex items-center gap-3 rounded-full bg-brand-600 px-14 py-3 text-[18px] font-medium text-white hover:bg-brand-700">Siguiente <ArrowRight size={20} /></button>
-                : <button disabled={!terms.every(Boolean)} onClick={() => setStep(3)} className="flex items-center gap-3 rounded-full bg-brand-600 px-9 py-3 text-[18px] font-medium text-white hover:bg-brand-700 disabled:opacity-50">Finalizar Registro <ArrowRight size={20} /></button>}
+                : <div className="flex flex-col items-end gap-1">
+                    <button disabled={!terms.every(Boolean) || enviando} onClick={finalizar} className="flex items-center gap-3 rounded-full bg-brand-600 px-9 py-3 text-[18px] font-medium text-white hover:bg-brand-700 disabled:opacity-50">{enviando ? 'Registrando…' : 'Finalizar Registro'} <ArrowRight size={20} /></button>
+                    {errorEnvio && <p className="max-w-[420px] text-right text-[13px] text-red-600">{errorEnvio}</p>}
+                  </div>}
             </div>
           ) : step === 3 ? (
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3">

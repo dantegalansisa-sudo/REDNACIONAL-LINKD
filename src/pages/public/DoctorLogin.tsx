@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { loginMedico, mensajeError, supabaseConfigurado } from '../../lib/api'
 import clsx from 'clsx'
 import { ArrowRight, ClipboardList, Eye, EyeOff, FileText, Lock, MonitorCheck, Stethoscope, User, UserRound, Users } from 'lucide-react'
 import { LoginShell } from './PatientLogin'
@@ -12,10 +13,19 @@ export default function DoctorLogin() {
   const [show, setShow] = useState(false)
   const [error, setError] = useState('')
 
-  const submit = (e: React.FormEvent) => {
+  const [cargando, setCargando] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user.trim() || pass.length < 6) return setError('Ingresa tu usuario y contraseña (mínimo 6 caracteres).')
-    try { localStorage.setItem('rns-medico-rol', rol) } catch { /* almacenamiento no disponible */ }
+    setError('')
+    let tipo = rol
+    if (supabaseConfigurado) {
+      setCargando(true)
+      try { tipo = await loginMedico(user, pass) } catch (err) { setCargando(false); return setError(mensajeError(err)) }
+      setCargando(false)
+    }
+    try { localStorage.setItem('rns-medico-rol', tipo) } catch { /* almacenamiento no disponible */ }
     navigate('/medico')
   }
 
@@ -45,9 +55,9 @@ export default function DoctorLogin() {
           <div className="mt-5 flex items-center justify-between"><label className="text-[18px] font-semibold text-ink">Contraseña</label>
             <button type="button" onClick={() => setShow(!show)} className="flex items-center gap-2 text-[15px] text-slate-500">{show ? <EyeOff size={19} /> : <Eye size={19} />} {show ? 'Ocultar' : 'Mostrar'}</button></div>
           <span className="relative mt-2 flex items-center"><Lock size={20} className="absolute left-4 text-ink" /><input type={show ? 'text' : 'password'} value={pass} onChange={(e) => setPass(e.target.value)} className="input !py-3 pl-12 !text-[16px]" placeholder="Ingresa tu contraseña" autoComplete="current-password" /></span>
-          <p className="mt-3 rounded-xl bg-brand-50 p-3 text-[13.5px] text-ink/80">Tu cuenta se activa cuando el SNS aprueba tu solicitud de registro. Recibirás las credenciales por WhatsApp y correo electrónico.</p>
+          <p className="mt-3 rounded-xl bg-brand-50 p-3 text-[13.5px] text-ink/80">Tu cuenta se activa cuando el SNS aprueba tu solicitud de registro. Recibirás un correo para crear tu contraseña.</p>
           {error && <p className="mt-3 text-[14px] text-red-600">{error}</p>}
-          <button type="submit" className="mt-5 flex w-full items-center justify-center gap-3 rounded-full bg-brand-600 py-4 text-[21px] font-medium text-white hover:bg-brand-700">Iniciar sesión <ArrowRight size={22} /></button>
+          <button type="submit" disabled={cargando} className="mt-5 flex w-full items-center justify-center gap-3 rounded-full bg-brand-600 py-4 text-[21px] font-medium text-white hover:bg-brand-700 disabled:opacity-60">{cargando ? 'Ingresando…' : 'Iniciar sesión'} <ArrowRight size={22} /></button>
           <p className="mt-5 text-center text-[14px] text-slate-500">¿Aún no formas parte de la red? <Link to="/registro/medico" className="font-semibold text-brand-700">Regístrate aquí</Link></p>
         </form>
       }

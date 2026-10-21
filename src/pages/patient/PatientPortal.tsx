@@ -4,6 +4,8 @@ import {
   Maximize2, Minus, Plus, Printer, RotateCw, Share2, Sun, User, UserRound, XCircle, Contrast, Move, type LucideIcon,
 } from 'lucide-react'
 import PortalLayout, { type PortalConfig } from '../../layouts/PortalLayout'
+import { RequiereSesion, useSesion } from '../../lib/session'
+import { cambiarClave, cambiarClavePrimerAcceso, mensajeError, supabaseConfigurado } from '../../lib/api'
 import { Badge, Modal, Modality, clsx } from '../../components/ui'
 
 /* =========================================================
@@ -358,11 +360,20 @@ export function ChangePasswordForm() {
   const [pwd, setPwd] = useState('')
   const [confirm, setConfirm] = useState('')
   const [done, setDone] = useState(false)
+  const [err, setErr] = useState('')
   const { rules, valid, score } = usePasswordRules(pwd, confirm)
   const mismatch = confirm.length > 0 && pwd !== confirm
   const ok = valid && current.length > 0
   return (
-    <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (ok) { setDone(true); setCurrent(''); setPwd(''); setConfirm('') } }}>
+    <form className="space-y-4" onSubmit={async (e) => {
+      e.preventDefault()
+      if (!ok) return
+      setErr('')
+      try {
+        if (supabaseConfigurado) await cambiarClave(current, pwd)
+        setDone(true); setCurrent(''); setPwd(''); setConfirm('')
+      } catch (error) { setErr(mensajeError(error)) }
+    }}>
       <PasswordInput label="Contraseña actual" value={current} onChange={(v) => { setCurrent(v); setDone(false) }} placeholder="Escribe tu contraseña actual" />
       <div>
         <PasswordInput label="Nueva contraseña" value={pwd} onChange={(v) => { setPwd(v); setDone(false) }} placeholder="Escribe tu nueva contraseña" />
@@ -376,6 +387,9 @@ export function ChangePasswordForm() {
       {done && (
         <p className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[13px] text-emerald-700"><CheckCircle2 size={18} /> Tu contraseña se actualizó correctamente.</p>
       )}
+      {err && (
+        <p className="text-[13px] text-red-600">{err}</p>
+      )}
       <button type="submit" disabled={!ok} className="btn-primary"><Lock size={16} /> Actualizar contraseña</button>
     </form>
   )
@@ -386,15 +400,22 @@ export function ChangePasswordForm() {
    ========================================================= */
 const PWD_KEY = 'rns-paciente-pwd'
 
-function FirstAccessModal({ open, onDone }: { open: boolean; onDone: () => void }) {
+function FirstAccessModal({ open, onDone }: { open: boolean; onDone: (pwd: string) => Promise<void> }) {
   const [pwd, setPwd] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
   const { rules, valid, score } = usePasswordRules(pwd, confirm)
   const mismatch = confirm.length > 0 && pwd !== confirm
   return (
     <Modal open={open} onClose={() => {}} hideClose closeOnBackdrop={false} className="max-w-[660px] !rounded-3xl">
       <form className="max-h-[92vh] overflow-y-auto px-5 pb-7 pt-6 sm:px-12"
-        onSubmit={(e) => { e.preventDefault(); if (valid) onDone() }}>
+        onSubmit={async (e) => {
+          e.preventDefault()
+          if (!valid || guardando) return
+          setGuardando(true); setError('')
+          try { await onDone(pwd) } catch (err) { setError(mensajeError(err)) } finally { setGuardando(false) }
+        }}>
         <div className="flex flex-col items-center text-center">
           <span className="flex h-[118px] w-[118px] items-center justify-center rounded-full bg-brand-100">
             <span className="relative flex h-[66px] w-[60px] items-end justify-center">
@@ -428,10 +449,11 @@ function FirstAccessModal({ open, onDone }: { open: boolean; onDone: () => void 
             <p>No podrás omitir este paso ni acceder a tu información médica hasta que establezcas tu nueva contraseña.</p>
           </div>
         </div>
-        <button type="submit" disabled={!valid}
+        {error && <p className="mt-3 text-[14px] text-red-600">{error}</p>}
+        <button type="submit" disabled={!valid || guardando}
           className={clsx('mt-5 flex h-14 w-full items-center justify-center gap-2.5 rounded-full text-[17px] font-semibold text-white transition',
             valid ? 'bg-brand-600 shadow-lg shadow-brand-600/30 hover:bg-brand-700' : 'cursor-not-allowed bg-[#b4c1dc]')}>
-          <Lock size={20} /> Guardar contraseña y continuar
+          <Lock size={20} /> {guardando ? 'Guardando…' : 'Guardar contraseña y continuar'}
         </button>
       </form>
     </Modal>
@@ -461,12 +483,28 @@ export const PATIENT_CONFIG: PortalConfig = {
   logoutPath: '/paciente/login',
 }
 
-export default function PatientPortal() {
-  const [needsPwd, setNeedsPwd] = useState(() => lsGet(PWD_KEY) === null)
+function PortalPaciente() {
+  const { sesion, recargar } = useSesion()
+  const p = sesion?.paciente
+  // En modo demostración el primer acceso se recuerda en el navegador; con Supabase lo indica la base de datos
+  const [demoPwd, setDemoPwd] = useState(() => lsGet(PWD_KEY) === null)
+  const needsPwd = supabaseConfigurado ? Boolean(p?.debe_cambiar_clave) : demoPwd
+  const config = p ? { ...PATIENT_CONFIG, user: { name: p.nombre_completo, code: p.codigo } } : PATIENT_CONFIG
   return (
     <PortalLayout
-      config={PATIENT_CONFIG}
-      overlay={<FirstAccessModal open={needsPwd} onDone={() => { lsSet(PWD_KEY, new Date().toISOString()); setNeedsPwd(false) }} />}
+      config={config}
+      overlay={<FirstAccessModal open={needsPwd} onDone={async (pwd) => {
+        if (supabaseConfigurado) { await cambiarClavePrimerAcceso(pwd); await recargar() }
+        else { lsSet(PWD_KEY, new Date().toISOString()); setDemoPwd(false) }
+      }} />}
     />
+  )
+}
+
+export default function PatientPortal() {
+  return (
+    <RequiereSesion roles={['paciente']} login="/paciente/login">
+      <PortalPaciente />
+    </RequiereSesion>
   )
 }
