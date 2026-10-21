@@ -58,13 +58,12 @@ export function PublicHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-[#e8eef8] bg-white/95 backdrop-blur">
-      <div className="mx-auto flex h-[74px] max-w-[1440px] items-center gap-4 px-4 sm:px-6 lg:px-8">
-        <Logo size="sm" className="sm:hidden [&_.font-serif]:text-[17px]" />
-        <Logo size="md" className="hidden sm:inline-flex [&_img]:h-12 [&_img]:w-12" />
+      <div className="mx-auto flex h-[68px] max-w-[1280px] items-center gap-4 px-4 sm:px-6 lg:px-8">
+        <Logo size="sm" className="h-10 sm:h-12" />
         <nav className="ml-auto hidden items-center gap-1 xl:flex">
           {NAV.map((n) => (
             <NavLink key={n.to} to={n.to}
-              className={clsx('relative px-3 py-2 text-[14.5px] transition', isActive(n.to)
+              className={clsx('relative px-3 py-2 text-[14px] transition', isActive(n.to)
                 ? 'font-medium text-ink after:absolute after:inset-x-3 after:bottom-0 after:h-[2px] after:bg-ink'
                 : 'text-ink/80 hover:text-ink')}>
               {n.label}
@@ -115,7 +114,7 @@ export function PublicFooter({ compact = false }: { compact?: boolean }) {
     return (
       <footer className="relative overflow-hidden bg-gradient-to-r from-navy-950 via-navy-900 to-navy-950 text-white">
         <div className="mx-auto flex max-w-[1200px] flex-col items-center justify-between gap-4 px-6 py-6 sm:flex-row">
-          <Logo size="sm" dark />
+          <span className="inline-flex rounded-xl bg-white px-3 py-2"><Logo size="sm" to="/" className="h-9" /></span>
           <span className="hidden h-12 w-px bg-white/25 sm:block" />
           <span className="text-[16px] text-white/90">Desarrollado por empresas dominicanas</span>
         </div>
@@ -125,9 +124,9 @@ export function PublicFooter({ compact = false }: { compact?: boolean }) {
   }
   return (
     <footer className="bg-gradient-to-b from-navy-900 to-navy-950 text-white">
-      <div className="mx-auto grid max-w-[1440px] gap-8 px-6 py-10 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1.5fr] lg:px-10">
+      <div className="mx-auto grid max-w-[1280px] gap-8 px-6 py-10 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1.5fr] lg:px-10">
         <div>
-          <Logo size="sm" dark />
+          <span className="inline-flex rounded-xl bg-white px-3 py-2"><Logo size="sm" to="/" className="h-9" /></span>
           <p className="mt-4 max-w-[300px] text-[13px] leading-relaxed text-white/80">
             Una red nacional de información diagnóstica al servicio de una salud más conectada, eficiente y accesible para todos los dominicanos.
           </p>
@@ -146,7 +145,7 @@ export function PublicFooter({ compact = false }: { compact?: boolean }) {
         </div>
       </div>
       <div className="border-t border-white/10">
-        <div className="mx-auto flex max-w-[1440px] flex-col items-center justify-between gap-3 px-6 py-4 text-[12px] text-white/70 sm:flex-row lg:px-10">
+        <div className="mx-auto flex max-w-[1280px] flex-col items-center justify-between gap-3 px-6 py-4 text-[12px] text-white/70 sm:flex-row lg:px-10">
           <span>© {BRAND.year} {BRAND.domain}. Todos los derechos reservados.</span>
           <div className="flex items-center gap-5">
             <Link to="/contacto#terminos" className="hover:text-white">Términos de Uso</Link>
@@ -183,10 +182,10 @@ export function PageHero({ eyebrow, title, text, image }: { eyebrow: string; tit
     <section className="relative overflow-hidden bg-navy-900">
       <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover object-right opacity-90" />
       <div className="absolute inset-0 bg-gradient-to-r from-navy-950 via-navy-900/90 to-navy-900/10" />
-      <div className="relative mx-auto max-w-[1440px] px-6 py-16 lg:px-10 lg:py-20">
+      <div className="relative mx-auto max-w-[1280px] px-6 py-12 lg:px-10 lg:py-14">
         <p className="text-[12px] font-semibold tracking-[0.3em] text-white/80">{eyebrow}</p>
-        <h1 className="mt-3 max-w-[640px] font-serif text-[38px] font-bold leading-[1.05] text-white sm:text-[48px]">{title}</h1>
-        <p className="mt-4 max-w-[560px] text-[16px] leading-relaxed text-white/85">{text}</p>
+        <h1 className="mt-3 max-w-[640px] font-serif text-[32px] font-bold leading-[1.05] text-white sm:text-[40px]">{title}</h1>
+        <p className="mt-3 max-w-[540px] text-[15px] leading-relaxed text-white/85">{text}</p>
       </div>
     </section>
   )
@@ -195,7 +194,7 @@ export function PageHero({ eyebrow, title, text, image }: { eyebrow: string; tit
 export function SectionTitle({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div className={className}>
-      <h2 className="font-serif text-[30px] font-bold leading-tight text-ink sm:text-[34px]">{children}</h2>
+      <h2 className="font-serif text-[26px] font-bold leading-tight text-ink sm:text-[28px]">{children}</h2>
       <div className="mt-2 flex h-[3px] w-16"><span className="flex-1 bg-brand-700" /><span className="flex-1 bg-rd-red" /></div>
     </div>
   )

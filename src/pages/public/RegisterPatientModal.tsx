@@ -87,12 +87,12 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
   const left = LEFT[step === 0 ? 0 : step === 3 ? 2 : 1]
 
   return (
-    <Modal open={open} onClose={close} className="max-w-[1280px]" closeOnBackdrop={false}>
-      <div className="grid min-h-[min(720px,88vh)] lg:grid-cols-[minmax(0,400px)_1fr]">
+    <Modal open={open} onClose={close} className="max-w-[1180px]" closeOnBackdrop={false}>
+      <div className="ui-compact grid min-h-[min(720px,88vh)] lg:grid-cols-[minmax(0,400px)_1fr]">
         {/* Panel izquierdo: texto arriba y foto abajo, sin superponerse */}
         <aside className="hidden flex-col overflow-hidden bg-gradient-to-b from-white to-[#e6effb] lg:flex">
           <div className="px-8 pt-7">
-            <Logo size="md" to={null} subtitle="RED NACIONAL DE SALUD DOMINICANA" className="[&_img]:h-[56px] [&_img]:w-[56px]" />
+            <Logo size="md" to={null} />
             <h2 className={clsx('mt-7 font-bold leading-[1.08] tracking-tight text-ink', step === 3 ? 'text-[32px]' : 'text-[40px]')}>{left.title}</h2>
             <p className="mt-3 max-w-[330px] text-[17px] leading-snug text-ink/90">{left.text}</p>
             <ul className="mt-5 space-y-3">
@@ -112,7 +112,7 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
 
         {/* Contenido */}
         <div className="flex flex-col px-4 pb-6 pt-5 sm:px-10">
-          <div className="mb-3 lg:hidden"><Logo size="sm" to={null} subtitle="RED NACIONAL DE SALUD DOMINICANA" /></div>
+          <div className="mb-3 lg:hidden"><Logo size="sm" to={null} /></div>
           {step < 3 && <RegStepper steps={steps} current={step} className="pr-10" />}
 
           {/* Paso 1 */}
@@ -321,8 +321,7 @@ export function RegisterPatientModal({ open, onClose }: { open: boolean; onClose
                 </div>
                 <div className="mx-auto w-full max-w-[220px]">
                   <div className="rounded-t-xl border-[6px] border-b-0 border-brand-400 bg-white p-4 text-center">
-                    <img src="/img/crops/logo-h-icon.webp" alt="" className="mx-auto h-7 w-7 rounded" />
-                    <div className="font-serif text-[12px] font-bold text-ink">RedNacionalSalud.do</div>
+                    <img src="/img/logos/rns.png" alt="" className="mx-auto h-8 w-auto" />
                     <div className="mt-2 rounded border border-[#d7e1f2] px-2 py-1 text-left text-[11px] text-ink">👤 {CODIGO}</div>
                     <div className="mt-1.5 rounded border border-[#d7e1f2] px-2 py-1 text-left text-[11px] text-ink">🔒 •••••••</div>
                     <div className="mt-2 rounded bg-brand-600 py-1 text-[11px] text-white">Iniciar sesión</div>

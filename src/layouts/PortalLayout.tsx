@@ -51,7 +51,7 @@ export default function PortalLayout({ config, overlay }: { config: PortalConfig
     <div className="min-h-screen bg-[#f3f7fd]">
       <header className="fixed inset-x-0 top-0 z-40 flex h-[72px] items-center gap-2 sm:gap-4 border-b border-[#e3eaf6] bg-white px-3 sm:px-6">
         <button className="rounded-md p-1.5 lg:hidden" onClick={() => setDrawer(true)} aria-label="Abrir menú"><Menu size={22} /></button>
-        <Logo size="sm" to={config.home} className="min-w-0 shrink [&_img]:h-11 [&_img]:w-11 max-[420px]:[&_.font-serif]:text-[15px]" />
+        <Logo size="sm" to={config.home} className="h-9 sm:h-11" />
         <nav className="ml-6 hidden items-center gap-1 xl:flex">
           {config.topLinks.map((l) => (
             <NavLink key={l.to} to={l.to} end={l.end}
@@ -99,7 +99,7 @@ export default function PortalLayout({ config, overlay }: { config: PortalConfig
       )}
 
       <main className="pt-[72px] lg:pl-[238px]">
-        <div className="mx-auto w-full max-w-[1500px] px-3 py-4 sm:px-5">
+        <div className="portal-compact mx-auto w-full max-w-[1500px] px-3 py-4 sm:px-5">
           <Outlet />
         </div>
       </main>

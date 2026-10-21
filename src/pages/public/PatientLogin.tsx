@@ -13,9 +13,9 @@ export function LoginShell({ bg, title, highlight, perks, badge, card }: {
       <PublicHeader />
       <main className="relative flex-1 overflow-hidden">
         <img src={bg} alt="" className="absolute inset-0 h-full w-full object-cover object-[35%_center]" />
-        <div className="absolute inset-0 bg-gradient-to-r from-white/80 via-white/30 to-white/0" />
+        <div className="absolute inset-0 bg-gradient-to-r from-white/95 via-white/80 to-white/10" />
         <div className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-white/70 to-transparent" />
-        <div className="relative mx-auto grid max-w-[1440px] gap-8 px-5 py-10 lg:grid-cols-[1fr_640px] lg:px-14 lg:py-12">
+        <div className="ui-compact relative mx-auto grid max-w-[1440px] gap-8 px-5 py-10 lg:grid-cols-[1fr_640px] lg:px-14 lg:py-12">
           <div className="flex flex-col">
             <h1 className="text-[44px] font-bold leading-[0.98] tracking-[-0.03em] text-ink sm:text-[64px]">{title}</h1>
             <p className="mt-4 max-w-[460px] text-[19px] leading-snug text-ink sm:text-[23px]">{highlight}</p>

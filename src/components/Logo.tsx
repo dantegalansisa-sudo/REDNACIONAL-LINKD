@@ -2,24 +2,13 @@ import clsx from 'clsx'
 import { Link } from 'react-router-dom'
 import { BRAND } from '../config/brand'
 
-/** Logotipo RedNacionalSalud.do (icono H + texto), como en las maquetas del sitio y portales */
-export function Logo({ size = 'md', subtitle = 'SISTEMA NACIONAL DE SALUD', dark = false, to = '/', className }: {
+/** Logotipo oficial RNS — Red Nacional de Salud (archivo provisto por el cliente) */
+export function Logo({ size = 'md', to = '/', className }: {
   size?: 'sm' | 'md' | 'lg'; subtitle?: string; dark?: boolean; to?: string | null; className?: string
 }) {
-  const icon = size === 'sm' ? 'h-9 w-9' : size === 'lg' ? 'h-[70px] w-[70px]' : 'h-12 w-12'
-  const name = size === 'sm' ? 'text-[19px]' : size === 'lg' ? 'text-[33px]' : 'text-[24px]'
-  const sub = size === 'sm' ? 'text-[7.5px]' : size === 'lg' ? 'text-[11.5px]' : 'text-[9px]'
-  const content = (
-    <span className={clsx('inline-flex items-center gap-2.5', className)}>
-      <img src="/img/crops/logo-h-icon.webp" alt="" className={clsx('shrink-0 rounded-lg', icon, dark && 'ring-1 ring-white/30')} />
-      <span className="flex flex-col leading-none">
-        <span className={clsx('font-serif font-bold tracking-[-0.02em]', name, dark ? 'text-white' : 'text-ink')}>{BRAND.domain}</span>
-        <span className="mt-1 h-[2px] w-full bg-gradient-to-r from-brand-600 via-brand-600 to-rd-red" />
-        <span className={clsx('mt-1 font-semibold tracking-[0.2em]', sub, dark ? 'text-white/85' : 'text-ink')}>{subtitle}</span>
-      </span>
-    </span>
-  )
-  return to ? <Link to={to} aria-label={BRAND.domain}>{content}</Link> : content
+  const h = size === 'sm' ? 'h-10' : size === 'lg' ? 'h-16' : 'h-12'
+  const content = <img src="/img/logos/rns.png" alt="RNS — Red Nacional de Salud" className={clsx('w-auto shrink-0 object-contain', h, className)} />
+  return to ? <Link to={to} aria-label={BRAND.domain} className="inline-flex shrink-0">{content}</Link> : content
 }
 
 /** Logo institucional RNS (imagen provista por el cliente) — usado en el panel de administración */

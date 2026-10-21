@@ -100,9 +100,9 @@ export function RegisterDoctorModal({ open, onClose }: { open: boolean; onClose:
   /* ---------------- Éxito ---------------- */
   if (open && step === 3) {
     return (
-      <Modal open onClose={close} className="max-w-[1100px]">
-        <div className="px-6 pb-8 pt-6 sm:px-10">
-          <Logo size="md" to={null} subtitle="SISTEMA NACIONAL DE SALUD DOMINICANA" />
+      <Modal open onClose={close} className="max-w-[940px]">
+        <div className="ui-compact px-6 pb-8 pt-6 sm:px-10">
+          <Logo size="md" to={null} />
           <div className="mx-auto -mt-2 flex h-[130px] w-[130px] items-center justify-center rounded-full bg-brand-50">
             <span className="flex h-[74px] w-[64px] items-center justify-center rounded-lg bg-brand-600 text-white"><FileCheck2 size={44} /></span>
           </div>
@@ -148,7 +148,7 @@ export function RegisterDoctorModal({ open, onClose }: { open: boolean; onClose:
   }
 
   return (
-    <Modal open={open} onClose={close} className="max-w-[1460px]" closeOnBackdrop={false}>
+    <Modal open={open} onClose={close} className="max-w-[1240px]" closeOnBackdrop={false}>
       {/* imagen decorativa de fondo (paso 1) */}
       {step === 0 && (
         <div className="pointer-events-none absolute right-0 top-0 hidden h-[380px] w-[48%] md:block">
@@ -157,8 +157,8 @@ export function RegisterDoctorModal({ open, onClose }: { open: boolean; onClose:
           <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-white to-transparent" />
         </div>
       )}
-      <div className="relative px-4 pb-4 pt-5 sm:px-8">
-        <Logo size="md" to={null} subtitle="RED NACIONAL DE SALUD DOMINICANA" className="[&_img]:h-[62px] [&_img]:w-[62px]" />
+      <div className="ui-compact relative px-4 pb-4 pt-5 sm:px-8">
+        <Logo size="md" to={null} />
         <div className="mt-5">{header}</div>
 
         {/* ---------------- Paso 1 ---------------- */}

@@ -42,3 +42,9 @@
 @media (min-width: 1600px) and (max-width: 1919.98px) { .admin-scale { zoom: 0.92; --admin-zoom: 0.92; } }
 .admin-scale .min-h-screen-z { min-height: calc(100vh / var(--admin-zoom, 1)); }
 .admin-scale .h-sidebar-z { height: calc(100vh / var(--admin-zoom, 1) - 60px); }
+
+/* Versión compacta (más minimalista) de logins, registros y portales en pantallas grandes */
+@media (min-width: 1024px) {
+  .ui-compact { zoom: 0.85; }
+  .portal-compact { zoom: 0.9; }
+}
