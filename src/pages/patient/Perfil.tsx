@@ -3,7 +3,10 @@ import { actualizarPaciente, mensajeError, supabaseConfigurado } from '../../lib
 import { useState, type ReactNode } from 'react'
 import { CheckCircle2, Home, Laptop, Mail, MessageCircle, Pencil, Phone, Save, Shield, ShieldCheck, Smartphone, User, UserRound, type LucideIcon } from 'lucide-react'
 import { Badge, InfoRow, Toggle, UserSilhouette } from '../../components/ui'
-import { ChangePasswordForm, PortalHeading } from './PatientPortal'
+import { AvisoDatos, ChangePasswordForm, PortalHeading } from './PatientPortal'
+import { fetchMiFicha, fetchMisEstudios, useDatos } from '../../lib/portal-data'
+import { fFecha, fFechaHora } from '../../lib/admin-data'
+import { supabase } from '../../lib/supabase'
 
 function Card({ icon: Icon, title, action, children }: { icon: LucideIcon; title: string; action?: ReactNode; children: ReactNode }) {
   return (
@@ -53,13 +56,41 @@ function EditableCard({ icon, title, fields, initial, onSave }: { icon: LucideIc
   )
 }
 
-const SESSIONS = [
+type Acceso = { icon: LucideIcon; device: string; place: string; when: string; current: boolean }
+
+const SESSIONS: Acceso[] = [
   { icon: Smartphone, device: 'Celular · Chrome / Android', place: 'Santo Domingo · 186.21.45.78', when: 'Sesión actual', current: true },
   { icon: Laptop, device: 'PC · Edge / Windows', place: 'Santo Domingo · 201.200.15.33', when: '10/03/2025 07:15 p. m.', current: false },
 ]
 
+/** Totales del encabezado y últimos accesos al portal */
+async function fetchResumenPerfil(pacienteId: string, userId: string) {
+  const [est, acc] = await Promise.all([
+    fetchMisEstudios(pacienteId),
+    supabase.from('accesos_portal').select('created_at, dispositivo, navegador, ip', { count: 'exact' })
+      .eq('user_id', userId).order('created_at', { ascending: false }).limit(3),
+  ])
+  if (acc.error) throw new Error(acc.error.message)
+  const rows = (acc.data ?? []) as { created_at: string; dispositivo: string | null; navegador: string | null; ip: string | null }[]
+  return {
+    estudios: est.length, hospitales: new Set(est.map((e) => e.hospitalId).filter(Boolean)).size, accesos: acc.count ?? rows.length,
+    recientes: rows.map((a, i): Acceso => ({
+      icon: /cel|m[oó]vil|phone|android|iphone|tablet|ipad/i.test(a.dispositivo ?? '') ? Smartphone : Laptop,
+      device: [a.dispositivo, a.navegador].filter(Boolean).join(' · ') || 'Dispositivo desconocido',
+      place: a.ip || 'IP no disponible', when: fFechaHora(a.created_at), current: i === 0,
+    })),
+  }
+}
+
 export default function Perfil() {
-  const pac = useSesion().sesion?.paciente
+  const sesion = useSesion().sesion
+  const pac = sesion?.paciente
+  const real = supabaseConfigurado
+  const resumen = useDatos(() => (pac && sesion ? fetchResumenPerfil(pac.id, sesion.userId) : Promise.resolve(null)),
+    real ? null : { estudios: 8, hospitales: 3, accesos: 12, recientes: SESSIONS }, [pac?.id])
+  const ficha = useDatos(() => (pac ? fetchMiFicha(pac.id) : Promise.resolve(null)), null, [pac?.id])
+  const f = ficha.datos
+  const kpi = (n?: number) => (n == null ? '—' : String(n))
   const guardar = (map: Record<string, string>) => async (d: Editable) => {
     if (!supabaseConfigurado || !pac) return
     await actualizarPaciente(pac.id, Object.fromEntries(Object.entries(map).map(([k, col]) => [col, d[k] ?? ''])))
@@ -77,11 +108,11 @@ export default function Perfil() {
           <p className="text-[16px] font-semibold text-brand-700">{pac?.codigo ?? 'HN-00012345'}</p>
           <div className="mt-2 flex flex-wrap justify-center gap-2 sm:justify-start">
             <Badge tone="green" icon>Cuenta activa</Badge>
-            <Badge tone="blue">Paciente desde 15/01/2023</Badge>
+            {real ? f && <Badge tone="blue">Paciente desde {fFecha(f.created_at)}</Badge> : <Badge tone="blue">Paciente desde 15/01/2023</Badge>}
           </div>
         </div>
         <div className="grid grid-cols-3 gap-3 text-center">
-          {[['8', 'Estudios'], ['3', 'Hospitales'], ['12', 'Accesos']].map(([v, l]) => (
+          {[[kpi(resumen.datos?.estudios), 'Estudios'], [kpi(resumen.datos?.hospitales), 'Hospitales'], [kpi(resumen.datos?.accesos), 'Accesos']].map(([v, l]) => (
             <div key={l} className="rounded-xl bg-brand-50 px-4 py-2.5"><p className="text-[22px] font-bold text-navy-800">{v}</p><p className="text-[12px] text-brand-800/80">{l}</p></div>
           ))}
         </div>
@@ -93,8 +124,18 @@ export default function Perfil() {
           <InfoRow label={pac?.tipo_documento === 'pasaporte' ? 'Pasaporte' : 'Cédula'}>{pac ? formatoCedula(pac.documento) : '001-1567890-1'}</InfoRow>
           <InfoRow label="Fecha de nacimiento">{pac ? fechaConEdad(pac.fecha_nacimiento) : '12/05/1980 (45 años)'}</InfoRow>
           <InfoRow label="Sexo">{pac ? pac.sexo ?? '—' : 'Masculino'}</InfoRow>
-          <InfoRow label="Nacionalidad">Dominicana</InfoRow>
-          <InfoRow label="Seguro médico">SENASA · Contributivo</InfoRow>
+          {real ? (
+            <>
+              <InfoRow label="Nacionalidad">{f?.nacionalidad || '—'}</InfoRow>
+              <InfoRow label="Ocupación">{f?.ocupacion || '—'}</InfoRow>
+              <InfoRow label="Estado civil">{f?.estado_civil || '—'}</InfoRow>
+            </>
+          ) : (
+            <>
+              <InfoRow label="Nacionalidad">Dominicana</InfoRow>
+              <InfoRow label="Seguro médico">SENASA · Contributivo</InfoRow>
+            </>
+          )}
           <p className="mt-3 text-[12px] text-slate-500">Para corregir datos de identidad, acude al área de admisión de cualquier hospital de la red con tu cédula.</p>
         </Card>
 
@@ -103,13 +144,42 @@ export default function Perfil() {
           initial={pac ? { phone: pac.telefono ?? '', wa: pac.whatsapp ?? '', mail: pac.correo ?? '', alt: '' } : { phone: '809-555-1234', wa: '809-555-1234', mail: 'juan.perez@correo.com', alt: '' }}
           onSave={guardar({ phone: 'telefono', wa: 'whatsapp', mail: 'correo' })} />
 
-        <EditableCard icon={Home} title="Dirección"
-          fields={[{ key: 'street', label: 'Calle y número' }, { key: 'sector', label: 'Sector' }, { key: 'city', label: 'Municipio' }, { key: 'prov', label: 'Provincia' }]}
-          initial={{ street: 'C/ Duarte #45, Apto. 2B', sector: 'Ensanche La Fe', city: 'Santo Domingo de Guzmán', prov: 'Distrito Nacional' }} />
+        {real ? (
+          f ? (
+            <>
+              <EditableCard icon={Home} title="Dirección"
+                fields={[
+                  { key: 'calle', label: 'Calle' }, { key: 'numero', label: 'Número' }, { key: 'apartamento', label: 'Apartamento' }, { key: 'sector', label: 'Sector' },
+                  { key: 'municipio', label: 'Municipio' }, { key: 'provincia', label: 'Provincia' }, { key: 'referencia', label: 'Referencia' },
+                ]}
+                initial={{
+                  calle: f.calle ?? '', numero: f.numero ?? '', apartamento: f.apartamento ?? '', sector: f.sector ?? '',
+                  municipio: f.municipio ?? '', provincia: f.provincia ?? '', referencia: f.referencia ?? '',
+                }}
+                onSave={guardar({ calle: 'calle', numero: 'numero', apartamento: 'apartamento', sector: 'sector', municipio: 'municipio', provincia: 'provincia', referencia: 'referencia' })} />
 
-        <EditableCard icon={MessageCircle} title="Contacto de emergencia"
-          fields={[{ key: 'name', label: 'Nombre' }, { key: 'rel', label: 'Parentesco' }, { key: 'phone', label: 'Teléfono', type: 'tel' }, { key: 'mail', label: 'Correo', type: 'email' }]}
-          initial={{ name: 'María Gómez de Pérez', rel: 'Esposa', phone: '809-555-7788', mail: 'maria.gomez@correo.com' }} />
+              <EditableCard icon={MessageCircle} title="Contacto de emergencia"
+                fields={[{ key: 'tel', label: 'Teléfono', type: 'tel' }, { key: 'rel', label: 'Parentesco' }]}
+                initial={{ tel: f.emergencia_telefono ?? '', rel: f.emergencia_parentesco ?? '' }}
+                onSave={guardar({ tel: 'emergencia_telefono', rel: 'emergencia_parentesco' })} />
+            </>
+          ) : (
+            <>
+              <Card icon={Home} title="Dirección"><AvisoDatos cargando={ficha.cargando} error={ficha.error} vacio mensaje="No encontramos tu dirección." className="!p-4" /></Card>
+              <Card icon={MessageCircle} title="Contacto de emergencia"><AvisoDatos cargando={ficha.cargando} error={ficha.error} vacio mensaje="No encontramos tu contacto de emergencia." className="!p-4" /></Card>
+            </>
+          )
+        ) : (
+          <>
+            <EditableCard icon={Home} title="Dirección"
+              fields={[{ key: 'street', label: 'Calle y número' }, { key: 'sector', label: 'Sector' }, { key: 'city', label: 'Municipio' }, { key: 'prov', label: 'Provincia' }]}
+              initial={{ street: 'C/ Duarte #45, Apto. 2B', sector: 'Ensanche La Fe', city: 'Santo Domingo de Guzmán', prov: 'Distrito Nacional' }} />
+
+            <EditableCard icon={MessageCircle} title="Contacto de emergencia"
+              fields={[{ key: 'name', label: 'Nombre' }, { key: 'rel', label: 'Parentesco' }, { key: 'phone', label: 'Teléfono', type: 'tel' }, { key: 'mail', label: 'Correo', type: 'email' }]}
+              initial={{ name: 'María Gómez de Pérez', rel: 'Esposa', phone: '809-555-7788', mail: 'maria.gomez@correo.com' }} />
+          </>
+        )}
       </div>
 
       <section className="card mt-4">
@@ -136,12 +206,13 @@ export default function Perfil() {
               </div>
             </div>
             <div className="rounded-xl border border-[#e6edf8] p-4">
-              <p className="mb-2 text-[14px] font-semibold text-ink">Sesiones activas</p>
-              {SESSIONS.map((s) => (
-                <div key={s.device} className="flex items-center gap-3 border-b border-[#eef2f8] py-2 last:border-0">
+              <p className="mb-2 text-[14px] font-semibold text-ink">{real ? 'Accesos recientes' : 'Sesiones activas'}</p>
+              {real && <AvisoDatos cargando={resumen.cargando} error={resumen.error} vacio={!resumen.datos?.recientes.length} mensaje="Aún no hay accesos registrados." className="!p-3 !text-[12.5px]" />}
+              {(resumen.datos?.recientes ?? []).map((s, i) => (
+                <div key={`${s.when}-${i}`} className="flex items-center gap-3 border-b border-[#eef2f8] py-2 last:border-0">
                   <s.icon size={20} className="text-brand-700" />
                   <div className="min-w-0 flex-1 text-[12.5px]"><p className="font-medium text-ink">{s.device}</p><p className="text-slate-500">{s.place} · {s.when}</p></div>
-                  {s.current ? <Badge tone="green">Actual</Badge> : <button className="text-[12px] font-semibold text-red-600 hover:underline">Cerrar</button>}
+                  {s.current ? <Badge tone="green">{real ? 'Último' : 'Actual'}</Badge> : !real && <button className="text-[12px] font-semibold text-red-600 hover:underline">Cerrar</button>}
                 </div>
               ))}
             </div>

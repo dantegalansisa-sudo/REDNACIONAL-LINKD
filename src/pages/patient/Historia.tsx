@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Activity, AlertTriangle, CalendarCheck, Droplet, FileText, Folder, HeartPulse, Pill, Scan, Stethoscope, Syringe, type LucideIcon } from 'lucide-react'
 import { InfoRow, Modality, clsx, type Tone } from '../../components/ui'
-import { PortalHeading } from './PatientPortal'
+import { AvisoDatos, PortalHeading } from './PatientPortal'
+import { useSesion } from '../../lib/session'
+import { fetchMiHistoria, useDatos } from '../../lib/portal-data'
 
 type Ev = { date: string; year: string; type: string; icon: LucideIcon; tone: Tone; title: string; place: string; detail: string; mod?: string }
 
@@ -18,28 +20,42 @@ const EVENTS: Ev[] = [
 
 const FILTERS = ['Todos', 'Estudio', 'Consulta', 'Diagnóstico', 'Vacuna']
 
+/** Icono y tono de cada tipo de evento real */
+const ESTILO: Record<string, { icon: LucideIcon; tone: Tone }> = {
+  Estudio: { icon: Scan, tone: 'blue' }, Diagnóstico: { icon: Activity, tone: 'orange' }, Consulta: { icon: Stethoscope, tone: 'purple' },
+}
+
 export default function Historia() {
+  const pac = useSesion().sesion?.paciente
+  const { datos: events, cargando, error, real } = useDatos<Ev[]>(async () => {
+    if (!pac) return []
+    return (await fetchMiHistoria(pac.id)).map((e) => ({ ...e, ...(ESTILO[e.type] ?? ESTILO.Estudio) }))
+  }, EVENTS, [pac?.id])
+  const filters = real ? ['Todos', ...['Estudio', 'Diagnóstico', 'Consulta'].filter((t) => events.some((e) => e.type === t))] : FILTERS
   const [f, setF] = useState('Todos')
-  const list = EVENTS.filter((e) => f === 'Todos' || e.type === f)
+  const list = events.filter((e) => f === 'Todos' || e.type === f)
   const years = [...new Set(list.map((e) => e.year))]
 
   return (
     <div>
-      <PortalHeading icon={Folder} title="Mi historia clínica" subtitle="Tu historial médico en orden cronológico: estudios, consultas, diagnósticos y vacunas." />
+      <PortalHeading icon={Folder} title="Mi historia clínica" subtitle={real
+        ? 'Tu historial médico en orden cronológico: estudios, diagnósticos y consultas.'
+        : 'Tu historial médico en orden cronológico: estudios, consultas, diagnósticos y vacunas.'} />
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <section className="card min-w-0 p-4 sm:p-5">
           <div className="mb-4 flex flex-wrap gap-2">
-            {FILTERS.map((x) => (
+            {filters.map((x) => (
               <button key={x} onClick={() => setF(x)} className={clsx('rounded-full border px-4 py-1.5 text-[13px] font-medium transition',
                 f === x ? 'border-brand-600 bg-brand-600 text-white' : 'border-[#d7e1f2] text-ink hover:border-brand-400')}>{x}</button>
             ))}
           </div>
+          <AvisoDatos cargando={cargando} error={error} vacio={events.length === 0} mensaje="Aún no hay eventos en tu historia clínica. Aquí verás tus estudios, diagnósticos y consultas realizados en la red." />
           {years.map((y) => (
             <div key={y} className="mb-2">
               <p className="mb-3 inline-block rounded-md bg-navy-800 px-3 py-1 text-[13px] font-bold text-white">{y}</p>
               <ol className="relative ml-5 border-l-2 border-brand-100">
-                {list.filter((e) => e.year === y).map((e) => (
-                  <li key={e.date + e.title} className="relative mb-4 pl-8">
+                {list.filter((e) => e.year === y).map((e, i) => (
+                  <li key={`${e.date}-${e.title}-${i}`} className="relative mb-4 pl-8">
                     <span className={clsx('absolute -left-[19px] top-0 flex h-9 w-9 items-center justify-center rounded-full ring-4 ring-white',
                       { blue: 'bg-brand-600', purple: 'bg-violet-600', green: 'bg-emerald-600', orange: 'bg-orange-500' }[e.tone as string] ?? 'bg-brand-600')}>
                       <e.icon size={17} className="text-white" />
@@ -61,6 +77,14 @@ export default function Historia() {
           ))}
         </section>
 
+        {real ? (
+          <div className="space-y-4">
+            <section className="card p-4">
+              <h3 className="mb-2 flex items-center gap-2 text-[15px] font-bold text-navy-800"><HeartPulse size={18} className="text-brand-600" /> Datos clínicos</h3>
+              <p className="text-[13px] text-slate-500">Tu tipo de sangre, alergias, medicamentos y antecedentes aparecerán aquí cuando un centro de la red los registre en tu expediente.</p>
+            </section>
+          </div>
+        ) : (
         <div className="space-y-4">
           <section className="card p-4">
             <h3 className="mb-2 flex items-center gap-2 text-[15px] font-bold text-navy-800"><HeartPulse size={18} className="text-brand-600" /> Datos clínicos</h3>
@@ -94,6 +118,7 @@ export default function Historia() {
             <button className="btn-outline mt-3 w-full"><FileText size={15} /> Descargar resumen clínico</button>
           </section>
         </div>
+        )}
       </div>
     </div>
   )

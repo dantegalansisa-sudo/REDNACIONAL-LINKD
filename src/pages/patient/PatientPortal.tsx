@@ -192,7 +192,7 @@ export function ReportModal({ study, onClose, patient = 'Juan Pérez Gómez', re
                 <p className="font-serif text-[22px] italic text-brand-700">{study.radiologist.replace(/^Dra?\.\s*/, '').split(' ').slice(0, 2).join(' ')}</p>
                 <div className="mt-1 h-px w-56 bg-slate-300" />
                 <p className="mt-1 text-[13px] font-semibold text-ink">{study.radiologist}</p>
-                <p className="text-[12px] text-slate-500">Médico radiólogo · Exequátur 12345</p>
+                <p className="text-[12px] text-slate-500">Médico radiólogo{supabaseConfigurado ? '' : ' · Exequátur 12345'}</p>
                 <p className="text-[12px] text-slate-500">Firmado electrónicamente el {study.date}</p>
               </div>
               <Badge tone="green" icon>Informe publicado</Badge>
@@ -219,7 +219,9 @@ function ReportSection({ title, children }: { title: string; children: ReactNode
 }
 
 /* ---------- Modal: visor de imágenes ---------- */
-export function ViewerModal({ study, onClose }: { study: Study | null; onClose: () => void }) {
+export function ViewerModal({ study, onClose, patient = 'Juan Pérez Gómez', record = 'HN-00012345' }: {
+  study: Study | null; onClose: () => void; patient?: string; record?: string
+}) {
   const [zoom, setZoom] = useState(1)
   const [rot, setRot] = useState(0)
   const [invert, setInvert] = useState(false)
@@ -271,7 +273,7 @@ export function ViewerModal({ study, onClose }: { study: Study | null; onClose: 
                 className="h-[52vh] w-auto max-w-full object-contain transition-transform duration-200"
                 style={{ transform: `scale(${zoom}) rotate(${rot}deg)`, filter: `${invert ? 'invert(1) ' : ''}brightness(${bright})` }} />
               <div className="pointer-events-none absolute left-3 top-3 space-y-0.5 text-[11px] text-white/80">
-                <p>Juan Pérez Gómez</p><p>HN-00012345</p><p>{study.id}</p>
+                <p>{patient}</p><p>{record}</p><p>{study.id}</p>
               </div>
               <div className="pointer-events-none absolute right-3 top-3 text-right text-[11px] text-white/80">
                 <p>{study.hospital}</p><p>{study.date}</p>
@@ -289,6 +291,20 @@ export function ViewerModal({ study, onClose }: { study: Study | null; onClose: 
       )}
     </Modal>
   )
+}
+
+/* ---------- Avisos de carga, error y lista vacía (datos reales) ---------- */
+export function AvisoDatos({ cargando, error, vacio, mensaje, className }: {
+  cargando?: boolean; error?: string; vacio?: boolean; mensaje: string; className?: string
+}) {
+  if (cargando) return (
+    <div className={clsx('flex items-center justify-center gap-2.5 p-8 text-[14px] text-slate-500', className)}>
+      <span className="h-5 w-5 animate-spin rounded-full border-2 border-brand-100 border-t-brand-600" /> Cargando información…
+    </div>
+  )
+  if (error) return <div className={clsx('p-8 text-center text-[14px] text-red-600', className)}>No se pudo cargar la información. {error}</div>
+  if (vacio) return <div className={clsx('p-8 text-center text-[14px] text-slate-500', className)}>{mensaje}</div>
+  return null
 }
 
 /* ---------- Formulario de contraseña con validación en vivo ---------- */

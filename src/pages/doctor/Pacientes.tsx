@@ -4,8 +4,20 @@ import { Link } from 'react-router-dom'
 import { Avatar, Badge, InfoRow, Modality, SearchInput, Table, clsx, type Tone } from '../../components/ui'
 import { PortalHeading, ReportModal, STUDIES, ViewerModal, type Study } from '../patient/PatientPortal'
 import { RoleNotice, useDoctorRole } from './DoctorPortal'
+import { useSesion } from '../../lib/session'
+import { fetchMisPacientesReferidos, supabaseConfigurado, useDatos, type PacienteReferido } from '../../lib/portal-data'
 
-type Pat = { name: string; record: string; cedula: string; age: number; sex: string; phone: string; email: string; last: string; status: string; tone: Tone; studies: Study[]; dx: string }
+type Pat = { name: string; record: string; cedula: string; age: number; sex: string; phone: string; email: string; last: string; status: string; tone: Tone; studies: Study[]; dx: string; solicitudes?: number }
+
+const TONO_REAL: Record<string, Tone> = { 'Resultado disponible': 'green', 'En proceso': 'blue', 'Solicitud enviada': 'purple' }
+const FILTROS_DEMO = ['Todos', 'Resultado disponible', 'En lectura', 'Programado', 'Pendiente de cita']
+const FILTROS_REAL = ['Todos', 'Resultado disponible', 'En proceso', 'Solicitud enviada']
+
+/** Paciente de la base → formato de la pantalla */
+const aPat = (p: PacienteReferido): Pat => ({
+  name: p.name, record: p.record, cedula: p.cedula, age: p.age, sex: p.sex, phone: p.phone, email: p.email, last: p.last,
+  status: p.status, tone: TONO_REAL[p.status] ?? 'gray', studies: p.studies, dx: '', solicitudes: p.solicitudes,
+})
 
 const PATIENTS: Pat[] = [
   { name: 'Juan Pérez Gómez', record: 'HN-00012345', cedula: '001-1567890-1', age: 45, sex: 'Masculino', phone: '809-555-1234', email: 'juan.perez@correo.com', last: '15/03/2025', status: 'Resultado disponible', tone: 'green', studies: STUDIES.slice(0, 4), dx: 'Cefalea recurrente · Hipertensión controlada' },
@@ -19,14 +31,19 @@ const PATIENTS: Pat[] = [
 
 export default function Pacientes() {
   const { role } = useDoctorRole()
+  const m = useSesion().sesion?.medico
+  const referidor = m?.tipo === 'referidor' ? m.id : null
+  const { datos, cargando, error, recargar } = useDatos<PacienteReferido[]>(() => (referidor ? fetchMisPacientesReferidos(referidor) : Promise.resolve([])), [], [referidor])
+  const real = supabaseConfigurado
+  const pacientes = useMemo(() => (real ? datos.map(aPat) : PATIENTS), [real, datos])
   const [sel, setSel] = useState(0)
   const [filter, setFilter] = useState('Todos')
   const [report, setReport] = useState<Study | null>(null)
   const [viewer, setViewer] = useState<Study | null>(null)
-  const list = useMemo(() => PATIENTS.filter((p) => filter === 'Todos' || p.status === filter), [filter])
+  const list = useMemo(() => pacientes.filter((p) => filter === 'Todos' || p.status === filter), [pacientes, filter])
 
   if (role !== 'referidor') return <RoleNotice needed="referidor" />
-  const p = PATIENTS[sel]
+  const p: Pat | undefined = pacientes[sel] ?? pacientes[0]
 
   return (
     <div>
@@ -37,7 +54,7 @@ export default function Pacientes() {
           <div className="flex flex-wrap items-center gap-2 border-b border-[#eef2f8] p-3">
             <SearchInput placeholder="Buscar por nombre, cédula o expediente" className="w-full sm:w-[300px]" />
             <div className="flex flex-wrap gap-1.5">
-              {['Todos', 'Resultado disponible', 'En lectura', 'Programado', 'Pendiente de cita'].map((f) => (
+              {(real ? FILTROS_REAL : FILTROS_DEMO).map((f) => (
                 <button key={f} onClick={() => setFilter(f)} className={clsx('rounded-full border px-3 py-1 text-[12px] font-medium',
                   filter === f ? 'border-brand-600 bg-brand-600 text-white' : 'border-[#d7e1f2] text-ink hover:border-brand-400')}>{f}</button>
               ))}
@@ -46,10 +63,18 @@ export default function Pacientes() {
           <Table>
             <thead className="bg-[#f3f7fd]"><tr>{['Paciente', 'Edad', 'Última referencia', 'Estudios', 'Estado'].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
             <tbody>
+              {real && cargando && pacientes.length === 0 && <tr><td colSpan={5} className="td py-8 text-center text-slate-500">Cargando pacientes…</td></tr>}
+              {real && !cargando && error && (
+                <tr><td colSpan={5} className="td py-8 text-center text-red-600">No se pudieron cargar tus pacientes: {error} <button onClick={recargar} className="ml-2 font-semibold text-brand-600 hover:underline">Reintentar</button></td></tr>
+              )}
+              {real && !cargando && !error && pacientes.length === 0 && (
+                <tr><td colSpan={5} className="td py-8 text-center">Aún no tienes pacientes referidos. Crea una solicitud de estudio para referir a tu primer paciente.</td></tr>
+              )}
+              {pacientes.length > 0 && list.length === 0 && <tr><td colSpan={5} className="td py-8 text-center">No hay pacientes con este estado.</td></tr>}
               {list.map((x) => {
-                const i = PATIENTS.indexOf(x)
+                const i = pacientes.indexOf(x)
                 return (
-                  <tr key={x.record} onClick={() => setSel(i)} className={clsx('tr cursor-pointer', i === sel && '!bg-brand-50')}>
+                  <tr key={x.record} onClick={() => setSel(i)} className={clsx('tr cursor-pointer', x === p && '!bg-brand-50')}>
                     <td className="td"><div className="flex items-center gap-2.5"><Avatar name={x.name} size={34} /><div><p className="whitespace-nowrap font-semibold text-ink">{x.name}</p><p className="text-[11px]">{x.record}</p></div></div></td>
                     <td className="td whitespace-nowrap">{x.age} años</td>
                     <td className="td whitespace-nowrap">{x.last}</td>
@@ -62,6 +87,13 @@ export default function Pacientes() {
           </Table>
         </section>
 
+        {!p ? (
+          <section className="card flex min-w-0 flex-col items-center justify-center p-8 text-center">
+            <Users size={40} className="text-brand-300" />
+            <p className="mt-2 text-[15px] font-bold text-navy-800">{cargando ? 'Cargando…' : 'Sin pacientes para mostrar'}</p>
+            <p className="mt-1 text-[12.5px] text-slate-500">Selecciona un paciente del listado para ver sus datos y estudios.</p>
+          </section>
+        ) : (
         <section className="card min-w-0">
           <div className="flex items-center gap-4 border-b border-[#eef2f8] bg-gradient-to-r from-brand-50 to-white p-4">
             <Avatar name={p.name} size={64} />
@@ -76,9 +108,12 @@ export default function Pacientes() {
             <InfoRow label="Edad / Sexo">{p.age} años · {p.sex}</InfoRow>
             <InfoRow label={<span className="flex items-center gap-1.5"><Phone size={14} /> Teléfono</span>}>{p.phone}</InfoRow>
             <InfoRow label={<span className="flex items-center gap-1.5"><Mail size={14} /> Correo</span>}>{p.email}</InfoRow>
-            <InfoRow label="Diagnóstico de referencia">{p.dx}</InfoRow>
+            {real
+              ? <InfoRow label="Solicitudes enviadas">{p.solicitudes ?? 0}</InfoRow>
+              : <InfoRow label="Diagnóstico de referencia">{p.dx}</InfoRow>}
             <h4 className="mb-2 mt-4 text-[14px] font-bold text-navy-800">Estudios del paciente</h4>
             <div className="space-y-2">
+              {p.studies.length === 0 && <p className="rounded-lg bg-[#f7faff] px-3 py-3 text-[12.5px] text-slate-500">Aún no hay estudios realizados para este paciente. Aparecerán cuando el hospital realice el estudio solicitado.</p>}
               {p.studies.map((s) => (
                 <div key={s.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-[#e6edf8] p-2.5">
                   <img src={s.img} alt="" className="h-12 w-12 rounded object-cover" />
@@ -87,7 +122,7 @@ export default function Pacientes() {
                     <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-slate-500"><Calendar size={12} /> {s.date} · {s.hospital}</p>
                   </div>
                   <div className="flex gap-1.5">
-                    <button onClick={() => setReport(s)} className="btn-outline !px-2.5 !py-1 !text-[12px]"><FileText size={14} /> Informe</button>
+                    <button disabled={real && s.status !== 'Informe publicado'} title={real && s.status !== 'Informe publicado' ? 'El informe aún no está publicado' : undefined} onClick={() => setReport(s)} className="btn-outline !px-2.5 !py-1 !text-[12px]"><FileText size={14} /> Informe</button>
                     <button onClick={() => setViewer(s)} className="btn-outline !px-2.5 !py-1 !text-[12px]"><ImageIcon size={14} /> Imágenes</button>
                   </div>
                 </div>
@@ -99,8 +134,9 @@ export default function Pacientes() {
             </div>
           </div>
         </section>
+        )}
       </div>
-      <ReportModal study={report} onClose={() => setReport(null)} patient={p.name} record={p.record} />
+      <ReportModal study={report} onClose={() => setReport(null)} patient={p?.name} record={p?.record} />
       <ViewerModal study={viewer} onClose={() => setViewer(null)} />
     </div>
   )

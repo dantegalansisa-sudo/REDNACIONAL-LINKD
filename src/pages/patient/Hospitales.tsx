@@ -1,7 +1,18 @@
 import { useState } from 'react'
 import { Building2, Calendar, Clock, ExternalLink, FileText, Mail, MapPin, Navigation, Phone, Stethoscope } from 'lucide-react'
 import { Badge, InfoRow, Modality, clsx } from '../../components/ui'
-import { PortalHeading, STUDIES } from './PatientPortal'
+import { AvisoDatos, PortalHeading, STUDIES, type Study } from './PatientPortal'
+import { useSesion } from '../../lib/session'
+import { fetchMisHospitales, useDatos } from '../../lib/portal-data'
+import { MOD_DESCRIPCION } from '../../lib/admin-data'
+
+type HospitalVista = {
+  name: string; city: string; last: string; address: string; phone: string; email: string
+  type: string; hours?: string; img: string; services: string[]; estudios: Study[]
+}
+
+const FOTOS = ['/img/crops/hospital-hugo.webp', '/img/banner-hospital.webp', '/img/paciente-sala.webp']
+const NIVEL: Record<string, string> = { I: 'Primer nivel', II: 'Segundo nivel', III: 'Tercer nivel' }
 
 const HOSPITALS = [
   {
@@ -24,17 +35,31 @@ const HOSPITALS = [
   },
 ]
 
+const DEMO: HospitalVista[] = HOSPITALS.map((h) => ({ ...h, estudios: STUDIES.filter((s) => s.hospital === h.short) }))
+
 export default function Hospitales() {
+  const pac = useSesion().sesion?.paciente
+  const { datos: hospitals, cargando, error } = useDatos<HospitalVista[]>(async () => {
+    if (!pac) return []
+    return (await fetchMisHospitales(pac.id)).map((h, i) => ({
+      name: h.name, city: h.city || '—', last: h.last, address: h.address, phone: h.phone, email: h.email,
+      type: [h.tipo, NIVEL[h.nivel] ?? (h.nivel ? `Nivel ${h.nivel}` : '')].filter(Boolean).join(' · ') || 'Centro de salud de la red',
+      img: FOTOS[i % FOTOS.length], services: h.mods.map((m) => MOD_DESCRIPCION[m] ?? m), estudios: h.estudios,
+    }))
+  }, DEMO, [pac?.id])
   const [sel, setSel] = useState(0)
-  const h = HOSPITALS[sel]
-  const studies = STUDIES.filter((s) => s.hospital === h.short)
+  const h = hospitals[Math.min(sel, hospitals.length - 1)]
+  const studies = h?.estudios ?? []
 
   return (
     <div>
       <PortalHeading icon={Building2} title="Hospitales" subtitle="Centros de salud de la red donde te has realizado estudios." />
+      {!h ? (
+        <div className="card"><AvisoDatos cargando={cargando} error={error} vacio mensaje="Aún no te has realizado estudios en hospitales de la red." /></div>
+      ) : (
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(320px,400px)_1fr]">
         <div className="min-w-0 space-y-3">
-          {HOSPITALS.map((x, i) => (
+          {hospitals.map((x, i) => (
             <button key={x.name} onClick={() => setSel(i)}
               className={clsx('card flex w-full items-center gap-3 p-4 text-left transition', i === sel ? '!border-brand-500 ring-2 ring-brand-100' : 'hover:border-brand-200')}>
               <span className={clsx('flex h-12 w-12 shrink-0 items-center justify-center rounded-full', i === sel ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-700')}><Building2 size={24} /></span>
@@ -43,7 +68,7 @@ export default function Hospitales() {
                 <span className="flex items-center gap-1.5 truncate text-[12.5px] text-slate-600"><MapPin size={13} /> {x.city}</span>
                 <span className="mt-1 flex items-center gap-1.5 text-[12px] text-slate-500"><Calendar size={13} /> Última visita: {x.last}</span>
               </span>
-              <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[11.5px] font-semibold text-brand-700">{STUDIES.filter((s) => s.hospital === x.short).length} estudios</span>
+              <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[11.5px] font-semibold text-brand-700">{x.estudios.length} estudios</span>
             </button>
           ))}
         </div>
@@ -65,11 +90,12 @@ export default function Hospitales() {
               <InfoRow label={<span className="flex items-center gap-1.5"><Navigation size={14} /> Ciudad</span>}>{h.city}</InfoRow>
               <InfoRow label={<span className="flex items-center gap-1.5"><Phone size={14} /> Teléfono</span>}>{h.phone}</InfoRow>
               <InfoRow label={<span className="flex items-center gap-1.5"><Mail size={14} /> Correo</span>}>{h.email}</InfoRow>
-              <InfoRow label={<span className="flex items-center gap-1.5"><Clock size={14} /> Horario</span>}>{h.hours}</InfoRow>
+              {h.hours && <InfoRow label={<span className="flex items-center gap-1.5"><Clock size={14} /> Horario</span>}>{h.hours}</InfoRow>}
               <h3 className="mb-2 mt-5 flex items-center gap-2 text-[15px] font-bold text-navy-800"><Stethoscope size={17} className="text-brand-600" /> Servicios disponibles</h3>
               <div className="flex flex-wrap gap-2">{h.services.map((s) => <span key={s} className="rounded-full bg-brand-50 px-3 py-1 text-[12.5px] text-brand-700">{s}</span>)}</div>
+              {h.services.length === 0 && <p className="text-[12.5px] text-slate-500">Sin servicios registrados.</p>}
               <div className="mt-5 flex flex-wrap gap-2">
-                <a href={`tel:${h.phone}`} className="btn-primary"><Phone size={16} /> Llamar</a>
+                {h.phone !== '—' && <a href={`tel:${h.phone}`} className="btn-primary"><Phone size={16} /> Llamar</a>}
                 <button className="btn-outline"><ExternalLink size={16} /> Cómo llegar</button>
               </div>
             </div>
@@ -94,6 +120,7 @@ export default function Hospitales() {
           </div>
         </section>
       </div>
+      )}
     </div>
   )
 }

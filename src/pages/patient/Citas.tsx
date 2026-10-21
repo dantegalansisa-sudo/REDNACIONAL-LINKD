@@ -1,9 +1,17 @@
 import { useState } from 'react'
-import { Bell, CalendarClock, CalendarPlus, CheckCircle2, Circle, Clock, MapPin, UserRound, X } from 'lucide-react'
+import { Bell, CalendarClock, CalendarPlus, CheckCircle2, Circle, Clock, Info, MapPin, UserRound, X } from 'lucide-react'
 import { Badge, Modal, Modality, Toggle, clsx } from '../../components/ui'
-import { PortalHeading } from './PatientPortal'
+import { AvisoDatos, PortalHeading } from './PatientPortal'
+import { useSesion } from '../../lib/session'
+import { fetchMisCitas, supabaseConfigurado, useDatos } from '../../lib/portal-data'
+import { fFecha } from '../../lib/admin-data'
 
-type Appt = { id: number; day: string; month: string; weekday: string; time: string; title: string; mod?: string; place: string; doctor: string; status: 'Confirmada' | 'Pendiente de confirmar' | 'Cancelada'; prep?: string }
+type Appt = {
+  id: number | string; day: string; month: string; weekday: string; time: string; title: string; mod?: string; place: string; doctor: string
+  status: 'Confirmada' | 'Pendiente de confirmar' | 'Cancelada' | 'Completada'; prep?: string; prepLabel?: string
+}
+type Pasada = { date: string; title: string; place: string; status: string }
+const ESTADO_HIST: Record<string, string> = { completada: 'Asistida', cancelada: 'Cancelada', no_asistio: 'No asistida' }
 
 const INITIAL: Appt[] = [
   { id: 1, day: '07', month: 'ABR', weekday: 'Lunes', time: '09:30 a. m.', title: 'Control de Medicina Interna', place: 'Hospital Hugo Mendoza · Consultorio 305', doctor: 'Dr. Luis Fernando González Santana', status: 'Confirmada' },
@@ -26,7 +34,24 @@ const HISTORY = [
 ]
 
 export default function Citas() {
-  const [appts, setAppts] = useState(INITIAL)
+  const pac = useSesion().sesion?.paciente
+  const real = supabaseConfigurado
+  const { datos: citas, cargando, error } = useDatos(async () => {
+    if (!pac) return { proximas: [] as Appt[], historial: [] as Pasada[] }
+    const cs = await fetchMisCitas(pac.id)
+    const proximas = cs.filter((c) => !c.pasada && c.status !== 'Cancelada')
+    const historial = cs.filter((c) => !proximas.includes(c)).sort((a, b) => b.fecha.localeCompare(a.fecha))
+    return {
+      proximas: proximas.map((c): Appt => ({
+        id: c.id, day: c.day, month: c.month, weekday: c.weekday, time: c.time, title: c.title, mod: c.mod, place: c.place,
+        doctor: c.doctor, status: c.status, prep: c.notas || undefined, prepLabel: 'Notas',
+      })),
+      historial: historial.map((c): Pasada => ({ date: fFecha(c.fecha), title: c.title, place: c.place, status: ESTADO_HIST[c.estado] ?? c.status })),
+    }
+  }, real ? { proximas: [], historial: [] } : { proximas: INITIAL, historial: HISTORY }, [pac?.id])
+  const [demoAppts, setAppts] = useState(INITIAL)
+  const appts = real ? citas.proximas : demoAppts
+  const history = citas.historial
   const [cancel, setCancel] = useState<Appt | null>(null)
   const [req, setReq] = useState(false)
   const [reqSent, setReqSent] = useState(false)
@@ -35,12 +60,13 @@ export default function Citas() {
   return (
     <div>
       <PortalHeading icon={CalendarClock} title="Citas y seguimiento" subtitle="Tus próximas citas, estudios programados y el seguimiento de tu atención."
-        actions={<button onClick={() => { setReq(true); setReqSent(false) }} className="btn-primary"><CalendarPlus size={16} /> Solicitar cita</button>} />
+        actions={!real && <button onClick={() => { setReq(true); setReqSent(false) }} className="btn-primary"><CalendarPlus size={16} /> Solicitar cita</button>} />
 
       <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
         <div className="min-w-0 space-y-4">
           <section className="card">
             <div className="card-head border-b border-[#eef2f8] !pb-3"><h3 className="card-title"><CalendarClock size={18} className="text-brand-600" /> Próximas citas</h3></div>
+            <AvisoDatos cargando={cargando} error={error} vacio={appts.length === 0} mensaje="No tienes citas próximas programadas." />
             <div className="divide-y divide-[#eef2f8]">
               {appts.map((a) => (
                 <div key={a.id} className={clsx('flex flex-col gap-4 p-4 sm:flex-row sm:items-center', a.status === 'Cancelada' && 'opacity-60')}>
@@ -58,11 +84,13 @@ export default function Citas() {
                       <p className="flex items-center gap-1.5"><MapPin size={13} className="text-brand-700" /> {a.place}</p>
                       <p className="flex items-center gap-1.5 sm:col-span-2"><UserRound size={13} className="text-brand-700" /> {a.doctor}</p>
                     </div>
-                    {a.prep && <p className="mt-2 rounded-md bg-amber-50 px-3 py-1.5 text-[12px] text-amber-700"><b>Preparación:</b> {a.prep}</p>}
+                    {a.prep && <p className="mt-2 rounded-md bg-amber-50 px-3 py-1.5 text-[12px] text-amber-700"><b>{a.prepLabel ?? 'Preparación'}:</b> {a.prep}</p>}
                   </div>
                   <div className="flex shrink-0 flex-row items-center gap-2 sm:flex-col sm:items-end">
-                    <Badge tone={a.status === 'Confirmada' ? 'green' : a.status === 'Cancelada' ? 'red' : 'orange'}>{a.status}</Badge>
-                    {a.status !== 'Cancelada' && (
+                    <Badge tone={a.status === 'Confirmada' ? 'green' : a.status === 'Cancelada' ? 'red' : a.status === 'Completada' ? 'blue' : 'orange'}>{a.status}</Badge>
+                    {real ? (
+                      <p className="max-w-[200px] text-[11.5px] text-slate-500 sm:text-right">Para cambiar tu cita, contacta al hospital.</p>
+                    ) : a.status !== 'Cancelada' && (
                       <div className="flex gap-1.5">
                         {a.status === 'Pendiente de confirmar' && (
                           <button onClick={() => setAppts(appts.map((x) => x.id === a.id ? { ...x, status: 'Confirmada' } : x))} className="btn-primary !px-3 !py-1 !text-[12px]">Confirmar</button>
@@ -78,9 +106,10 @@ export default function Citas() {
 
           <section className="card">
             <div className="card-head border-b border-[#eef2f8] !pb-3"><h3 className="card-title">Historial de citas</h3></div>
+            <AvisoDatos cargando={cargando} error={error} vacio={history.length === 0} mensaje="Aún no tienes citas anteriores registradas." />
             <div className="divide-y divide-[#eef2f8] px-4">
-              {HISTORY.map((h) => (
-                <div key={h.date + h.title} className="flex flex-wrap items-center gap-3 py-2.5 text-[13px]">
+              {history.map((h, i) => (
+                <div key={`${h.date}-${h.title}-${i}`} className="flex flex-wrap items-center gap-3 py-2.5 text-[13px]">
                   <span className="w-24 text-slate-500">{h.date}</span>
                   <span className="min-w-0 flex-1 font-medium text-ink">{h.title}<span className="block text-[12px] font-normal text-slate-500">{h.place}</span></span>
                   <Badge tone={h.status === 'Asistida' ? 'blue' : 'gray'}>{h.status}</Badge>
@@ -91,6 +120,12 @@ export default function Citas() {
         </div>
 
         <div className="space-y-4">
+          {real ? (
+            <section className="card p-4">
+              <h3 className="text-[15px] font-bold text-navy-800">Seguimiento</h3>
+              <p className="mt-2 flex gap-2 text-[13px] text-slate-500"><Info size={17} className="shrink-0 text-brand-600" /> Tu médico aún no ha registrado un plan de seguimiento. Cuando lo haga, verás aquí cada paso de tu atención.</p>
+            </section>
+          ) : (
           <section className="card p-4">
             <h3 className="text-[15px] font-bold text-navy-800">Seguimiento: cefalea recurrente</h3>
             <p className="text-[12.5px] text-slate-500">Plan indicado por Dr. Luis Fernando González Santana</p>
@@ -110,9 +145,10 @@ export default function Citas() {
               ))}
             </ol>
           </section>
+          )}
           <section className="card p-4">
             <h3 className="mb-3 flex items-center gap-2 text-[15px] font-bold text-navy-800"><Bell size={17} className="text-brand-600" /> Recordatorios</h3>
-            {([['wa', 'WhatsApp (809-555-1234)'], ['sms', 'Mensaje de texto (SMS)'], ['mail', 'Correo electrónico']] as const).map(([k, l]) => (
+            {([['wa', `WhatsApp (${real ? pac?.whatsapp || pac?.telefono || 'sin número' : '809-555-1234'})`], ['sms', 'Mensaje de texto (SMS)'], ['mail', 'Correo electrónico']] as const).map(([k, l]) => (
               <div key={k} className="flex items-center justify-between border-b border-[#eef2f8] py-2.5 text-[13px] last:border-0">
                 <span className="text-ink">{l}</span>
                 <Toggle on={rem[k]} onChange={(v) => setRem({ ...rem, [k]: v })} />

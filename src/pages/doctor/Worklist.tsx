@@ -5,6 +5,11 @@ import {
 import { Badge, Modal, Modality, Select, Table, clsx, type Tone } from '../../components/ui'
 import { PortalHeading } from '../patient/PatientPortal'
 import { RoleNotice, useDoctorRole, useDoctorInfo } from './DoctorPortal'
+import { useSesion } from '../../lib/session'
+import { mensajeError } from '../../lib/api'
+import {
+  fetchListaTrabajo, fetchResumenMedico, guardarInforme, marcarEnLectura, supabaseConfigurado, useDatos, type ItemTrabajo,
+} from '../../lib/portal-data'
 
 export type Priority = 'Urgente' | 'Alta' | 'Normal'
 export type WorkItem = {
@@ -28,11 +33,24 @@ export const PRIORITY_TONE: Record<Priority, Tone> = { Urgente: 'red', Alta: 'or
 const STATUS_TONE: Record<WorkItem['status'], Tone> = { Pendiente: 'gray', 'En lectura': 'blue', Borrador: 'yellow', Firmado: 'green' }
 
 /* ---------- Modal: redactar informe ---------- */
-export function ReportEditor({ item, onClose, onSaved }: { item: WorkItem | null; onClose: () => void; onSaved?: (id: string, status: WorkItem['status']) => void }) {
+/** Datos del informe que se envían a la base (modo real) */
+export type DatosInforme = { tecnica: string; hallazgos: string; impresion: string; critico: boolean; publicar: boolean }
+
+const esItemReal = (w: WorkItem | null): w is ItemTrabajo => !!w && 'uuid' in w
+
+export function ReportEditor({ item, onClose, onSaved, onGuardar }: {
+  item: WorkItem | null; onClose: () => void; onSaved?: (id: string, status: WorkItem['status']) => void
+  /** Modo real: guarda el borrador o firma y publica en la base de datos */
+  onGuardar?: (d: DatosInforme) => Promise<void>
+}) {
   const firma = useDoctorInfo()
   const [tech, setTech] = useState('')
   const [find, setFind] = useState('')
   const [imp, setImp] = useState('')
+  const [crit, setCrit] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [hora, setHora] = useState('')
   const [zoom, setZoom] = useState(1)
   const [rot, setRot] = useState(0)
   const [inv, setInv] = useState(false)
@@ -43,10 +61,32 @@ export function ReportEditor({ item, onClose, onSaved }: { item: WorkItem | null
 
   if (item && item.id !== lastId) {
     setLastId(item.id)
-    setTech(`Estudio de ${item.study.toLowerCase()} realizado según protocolo institucional.`)
-    setFind('')
-    setImp('')
-    setZoom(1); setRot(0); setInv(false); setBright(1); setMsg(''); setConfirm(false)
+    const real = esItemReal(item) ? item : null
+    setTech(real?.tecnica || `Estudio de ${item.study.toLowerCase()} realizado según protocolo institucional.`)
+    setFind(real?.hallazgos ?? '')
+    setImp(real?.impresion ?? '')
+    setCrit(real?.critico ?? false)
+    setZoom(1); setRot(0); setInv(false); setBright(1); setMsg(''); setConfirm(false); setErr(''); setBusy(false)
+  }
+
+  /** Guarda (borrador o publicación): en modo real llama a la base; en demostración solo actualiza la pantalla */
+  const guardar = async (publicar: boolean) => {
+    if (!item) return
+    setErr('')
+    if (onGuardar) {
+      setBusy(true)
+      try {
+        await onGuardar({ tecnica: tech.trim(), hallazgos: find.trim(), impresion: imp.trim(), critico: crit, publicar })
+      } catch (e) {
+        setErr(`No se pudo ${publicar ? 'publicar' : 'guardar'} el informe: ${mensajeError(e)}`)
+        return
+      } finally {
+        setBusy(false)
+      }
+    }
+    setHora(new Date().toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }))
+    setMsg(publicar ? 'signed' : 'draft')
+    onSaved?.(item.id, publicar ? 'Firmado' : 'Borrador')
   }
 
   const template = () => {
@@ -111,15 +151,16 @@ export function ReportEditor({ item, onClose, onSaved }: { item: WorkItem | null
                 <div><label className="label">Técnica</label><textarea rows={2} value={tech} onChange={(e) => setTech(e.target.value)} className="input resize-y" /></div>
                 <div><label className="label">Hallazgos <span className="req">*</span></label><textarea rows={7} value={find} onChange={(e) => setFind(e.target.value)} className="input resize-y" placeholder="Describe los hallazgos del estudio…" /></div>
                 <div><label className="label">Impresión diagnóstica <span className="req">*</span></label><textarea rows={3} value={imp} onChange={(e) => setImp(e.target.value)} className="input resize-y" placeholder="Conclusión diagnóstica…" /></div>
-                <label className="flex items-center gap-2 text-[12.5px] text-ink"><input type="checkbox" className="accent-brand-600" /> Marcar como hallazgo crítico y notificar al referidor</label>
-                {msg === 'draft' && <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700"><Save size={15} /> Borrador guardado a las {new Date().toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}.</p>}
+                <label className="flex items-center gap-2 text-[12.5px] text-ink"><input type="checkbox" className="accent-brand-600" checked={crit} onChange={(e) => setCrit(e.target.checked)} /> Marcar como hallazgo crítico y notificar al referidor</label>
+                {msg === 'draft' && <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700"><Save size={15} /> Borrador guardado a las {hora}.</p>}
                 {msg === 'signed' && <p className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-700"><CheckCircle2 size={15} /> Informe firmado y publicado. El paciente y el referidor fueron notificados.</p>}
+                {err && <p className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600"><AlertTriangle size={15} /> {err}</p>}
               </div>
               <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-[#e6edf8] bg-[#f7faff] px-5 py-3">
                 <p className="text-[12px] text-slate-500">Firma: {firma.name} · Exequátur {firma.exequatur}</p>
                 <div className="flex gap-2">
-                  <button disabled={msg === 'signed'} onClick={() => { setMsg('draft'); onSaved?.(item.id, 'Borrador') }} className="btn-outline"><Save size={16} /> Guardar borrador</button>
-                  <button disabled={!canSign || msg === 'signed'} onClick={() => setConfirm(true)} className="btn-primary"><FileSignature size={16} /> Firmar y publicar</button>
+                  <button disabled={msg === 'signed' || busy} onClick={() => guardar(false)} className="btn-outline"><Save size={16} /> {busy ? 'Guardando…' : 'Guardar borrador'}</button>
+                  <button disabled={!canSign || msg === 'signed' || busy} onClick={() => setConfirm(true)} className="btn-primary"><FileSignature size={16} /> Firmar y publicar</button>
                 </div>
               </div>
             </div>
@@ -134,7 +175,7 @@ export function ReportEditor({ item, onClose, onSaved }: { item: WorkItem | null
             <p className="mt-1 text-[13px] text-slate-600">Una vez publicado, el informe quedará disponible para el paciente y el médico referidor. Las correcciones posteriores se registran como adenda.</p>
             <div className="mt-5 flex justify-center gap-2">
               <button onClick={() => setConfirm(false)} className="btn-outline">Cancelar</button>
-              <button onClick={() => { setConfirm(false); setMsg('signed'); onSaved?.(item.id, 'Firmado') }} className="btn-primary">Firmar ahora</button>
+              <button onClick={() => { setConfirm(false); guardar(true) }} className="btn-primary">Firmar ahora</button>
             </div>
           </div>
         </div>
@@ -143,13 +184,41 @@ export function ReportEditor({ item, onClose, onSaved }: { item: WorkItem | null
   )
 }
 
+/**
+ * Editor de informes listo para las páginas del radiólogo.
+ * En modo real guarda en la base (borrador o publicación) y recarga la lista;
+ * en demostración se comporta igual que el editor de ejemplo.
+ */
+export function EditorEstudio({ item, items, onClose, onSaved, recargar }: {
+  item: WorkItem | null; items: WorkItem[]; onClose: () => void
+  onSaved?: (id: string, status: WorkItem['status']) => void; recargar?: () => unknown
+}) {
+  const m = useSesion().sesion?.medico
+  // Tras guardar, la lista se recarga: se usa la versión más reciente del estudio (con su informe ya creado)
+  const actual = esItemReal(item) ? (items.find((x) => esItemReal(x) && x.uuid === item.uuid) ?? item) : item
+  const onGuardar = supabaseConfigurado && esItemReal(actual)
+    ? async (d: DatosInforme) => {
+      if (!m) throw new Error('No se encontró la ficha del médico en la sesión.')
+      await guardarInforme({ estudioUuid: actual.uuid, radiologoId: m.id, informeId: actual.informeId, ...d })
+      await recargar?.()
+    }
+    : undefined
+  return <ReportEditor item={actual} onClose={onClose} onSaved={onSaved} onGuardar={onGuardar} />
+}
+
 export default function Worklist() {
   const { role } = useDoctorRole()
-  const [items, setItems] = useState(WORKLIST)
+  const m = useSesion().sesion?.medico
+  const radiologo = m?.tipo === 'radiologo' ? m.id : null
+  const real = useDatos<WorkItem[]>(() => (radiologo ? fetchListaTrabajo(radiologo) : Promise.resolve([])), WORKLIST, [radiologo])
+  const resumen = useDatos(() => (radiologo ? fetchResumenMedico(radiologo, 'radiologo') : Promise.resolve(null)), null, [radiologo])
+  const [demo, setDemo] = useState(WORKLIST)
+  const items = supabaseConfigurado ? real.datos : demo
   const [prio, setPrio] = useState('Todas las prioridades')
   const [mod, setMod] = useState('Todas las modalidades')
   const [hosp, setHosp] = useState('Todos los hospitales')
   const [open, setOpen] = useState<WorkItem | null>(null)
+  const [accionError, setAccionError] = useState('')
 
   const list = useMemo(() => items.filter((w) =>
     (prio === 'Todas las prioridades' || w.priority === prio) &&
@@ -158,13 +227,30 @@ export default function Worklist() {
 
   if (role !== 'radiologo') return <RoleNotice needed="radiologo" />
 
+  const cargandoReal = supabaseConfigurado && real.cargando && items.length === 0
   const pending = items.filter((i) => i.status !== 'Firmado')
+  const n = (v: number) => (cargandoReal ? '…' : v)
   const stats = [
-    { label: 'Pendientes', value: pending.length, cls: 'text-ink', icon: ClipboardList },
-    { label: 'Urgentes', value: pending.filter((i) => i.priority === 'Urgente').length, cls: 'text-red-600', icon: AlertTriangle },
-    { label: 'Prioridad alta', value: pending.filter((i) => i.priority === 'Alta').length, cls: 'text-orange-500', icon: Clock },
-    { label: 'Firmados hoy', value: items.filter((i) => i.status === 'Firmado').length + 14, cls: 'text-emerald-600', icon: CheckCircle2 },
+    { label: 'Pendientes', value: n(pending.length), cls: 'text-ink', icon: ClipboardList },
+    { label: 'Urgentes', value: n(pending.filter((i) => i.priority === 'Urgente').length), cls: 'text-red-600', icon: AlertTriangle },
+    { label: 'Prioridad alta', value: n(pending.filter((i) => i.priority === 'Alta').length), cls: 'text-orange-500', icon: Clock },
+    supabaseConfigurado
+      ? { label: 'Publicados hoy', value: resumen.datos ? resumen.datos.informesHoy : '…', cls: 'text-emerald-600', icon: CheckCircle2 }
+      : { label: 'Firmados hoy', value: items.filter((i) => i.status === 'Firmado').length + 14, cls: 'text-emerald-600', icon: CheckCircle2 },
   ]
+  const hospitales = supabaseConfigurado
+    ? ['Todos los hospitales', ...[...new Set(items.map((i) => i.hospital))].sort()]
+    : ['Todos los hospitales', 'Hospital Hugo Mendoza', 'Hospital General', 'Hospital Dr. Francisco A. Gonzalvo']
+
+  /** "Leer estudio": en modo real el estudio pasa a "en lectura" al abrir el editor */
+  const leer = async (w: WorkItem) => {
+    setAccionError('')
+    setOpen(w)
+    if (esItemReal(w) && w.status === 'Pendiente') {
+      try { await marcarEnLectura(w.uuid); await real.recargar() } catch (e) { setAccionError(`No se pudo marcar el estudio como "en lectura": ${mensajeError(e)}`) }
+    }
+  }
+  const recargarTodo = async () => { await Promise.all([real.recargar(), resumen.recargar()]) }
 
   return (
     <div>
@@ -183,15 +269,20 @@ export default function Worklist() {
         <div className="flex flex-wrap items-center gap-2 border-b border-[#eef2f8] p-3">
           <Select options={['Todas las prioridades', 'Urgente', 'Alta', 'Normal']} onChange={setPrio} className="w-full sm:w-[200px]" />
           <Select options={['Todas las modalidades', 'CT', 'MR', 'RX', 'US', 'MG']} onChange={setMod} className="w-full sm:w-[200px]" />
-          <Select options={['Todos los hospitales', 'Hospital Hugo Mendoza', 'Hospital General', 'Hospital Dr. Francisco A. Gonzalvo']} onChange={setHosp} className="w-full sm:w-[260px]" />
-          <span className="ml-auto text-[12.5px] text-slate-500">{list.length} estudios</span>
+          <Select options={hospitales} onChange={setHosp} className="w-full sm:w-[260px]" />
+          <span className="ml-auto text-[12.5px] text-slate-500">{cargandoReal ? 'Cargando…' : `${list.length} estudios`}</span>
         </div>
+        {accionError && <p className="border-b border-red-100 bg-red-50 px-4 py-2.5 text-[12.5px] text-red-600">{accionError}</p>}
         <Table>
           <thead className="bg-[#f3f7fd]">
             <tr>{['Prioridad', 'Paciente', 'Estudio', 'Mod.', 'Hospital', 'Recibido', 'Tiempo restante', 'Estado', ''].map((h) => <th key={h} className="th">{h}</th>)}</tr>
           </thead>
           <tbody>
-            {list.map((w) => (
+            {cargandoReal && <tr><td colSpan={9} className="td py-8 text-center text-slate-500">Cargando lista de trabajo…</td></tr>}
+            {supabaseConfigurado && !real.cargando && real.error && (
+              <tr><td colSpan={9} className="td py-8 text-center text-red-600">No se pudo cargar la lista de trabajo: {real.error} <button onClick={real.recargar} className="ml-2 font-semibold text-brand-600 hover:underline">Reintentar</button></td></tr>
+            )}
+            {!cargandoReal && list.map((w) => (
               <tr key={w.id} className={clsx('tr', w.priority === 'Urgente' && w.status !== 'Firmado' && 'bg-red-50/40')}>
                 <td className="td"><Badge tone={PRIORITY_TONE[w.priority]}>{w.priority}</Badge></td>
                 <td className="td"><p className="whitespace-nowrap font-semibold text-ink">{w.patient}</p><p className="text-[11px]">{w.record} · {w.age}</p></td>
@@ -209,19 +300,23 @@ export default function Worklist() {
                 </td>
                 <td className="td"><Badge tone={STATUS_TONE[w.status]}>{w.status}</Badge></td>
                 <td className="td">
-                  <button onClick={() => setOpen(w)} className={clsx('whitespace-nowrap !px-3 !py-1.5 !text-[12px]', w.status === 'Firmado' ? 'btn-outline' : 'btn-primary')}>
+                  <button onClick={() => leer(w)} className={clsx('whitespace-nowrap !px-3 !py-1.5 !text-[12px]', w.status === 'Firmado' ? 'btn-outline' : 'btn-primary')}>
                     <Eye size={14} /> {w.status === 'Firmado' ? 'Ver informe' : 'Leer estudio'}
                   </button>
                 </td>
               </tr>
             ))}
-            {list.length === 0 && <tr><td colSpan={9} className="td py-8 text-center">No hay estudios con los filtros seleccionados.</td></tr>}
+            {!cargandoReal && !(supabaseConfigurado && real.error) && list.length === 0 && (
+              <tr><td colSpan={9} className="td py-8 text-center">
+                {items.length === 0 ? 'No tienes estudios asignados pendientes de lectura. Aparecerán aquí cuando se te asignen.' : 'No hay estudios con los filtros seleccionados.'}
+              </td></tr>
+            )}
           </tbody>
         </Table>
       </section>
 
-      <ReportEditor item={open} onClose={() => setOpen(null)}
-        onSaved={(id, status) => setItems((xs) => xs.map((x) => x.id === id ? { ...x, status } : x))} />
+      <EditorEstudio item={open} items={items} onClose={() => setOpen(null)} recargar={recargarTodo}
+        onSaved={supabaseConfigurado ? undefined : (id, status) => setDemo((xs) => xs.map((x) => x.id === id ? { ...x, status } : x))} />
     </div>
   )
 }

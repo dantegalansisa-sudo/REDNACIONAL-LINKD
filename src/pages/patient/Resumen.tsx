@@ -6,7 +6,10 @@ import {
   Laptop, MapPin, Megaphone, Monitor, Phone, SquarePen, Smartphone, Tablet, User, X, type LucideIcon,
 } from 'lucide-react'
 import { Modality, Table, UserSilhouette, clsx } from '../../components/ui'
-import { ReportModal, STUDIES, ViewerModal, lsGet, lsSet, type Study } from './PatientPortal'
+import { AvisoDatos, ReportModal, STUDIES, ViewerModal, lsGet, lsSet, type Study } from './PatientPortal'
+import { fetchMisEstudios, supabaseConfigurado, useDatos, type EstudioPaciente } from '../../lib/portal-data'
+import { fFechaHora } from '../../lib/admin-data'
+import { supabase } from '../../lib/supabase'
 
 const KPIS: { icon: LucideIcon; value: string; label: string; bg: string; fg: string; to: string }[] = [
   { icon: FileText, value: '8', label: 'Estudios realizados', bg: 'bg-brand-50', fg: 'text-brand-600', to: '/paciente/estudios' },
@@ -21,11 +24,35 @@ const HOSPITALS = [
   { name: 'Hospital Dr. Francisco A. Gonzalvo', city: 'Santiago de los Caballeros', last: '28/01/2025' },
 ]
 
-const ACTIVITY: { date: string; device: string; dIcon: LucideIcon; browser: string; b: 'chrome' | 'edge' | 'safari'; ip: string }[] = [
+type Actividad = { date: string; device: string; dIcon: LucideIcon; browser: string; b: 'chrome' | 'edge' | 'safari'; ip: string }
+
+const ACTIVITY: Actividad[] = [
   { date: '14/03/2025 08:32 a. m.', device: 'Celular', dIcon: Smartphone, browser: 'Chrome / Android', b: 'chrome', ip: '186.21.45.78' },
   { date: '10/03/2025 07:15 p. m.', device: 'PC', dIcon: Laptop, browser: 'Edge / Windows', b: 'edge', ip: '201.200.15.33' },
   { date: '28/02/2025 09:41 a. m.', device: 'Tablet', dIcon: Tablet, browser: 'Safari / iPadOS', b: 'safari', ip: '190.118.22.11' },
 ]
+
+const DEMO_ESTUDIOS: EstudioPaciente[] = STUDIES.map((s) => ({ ...s, uuid: s.id, hospitalId: s.hospital, referidorId: s.referrer, recibido: '', publicadoEn: null }))
+
+/** Accesos al portal del usuario: total y los 3 más recientes */
+async function fetchAccesosPortal(userId?: string): Promise<{ total: number; recientes: Actividad[] }> {
+  if (!userId) return { total: 0, recientes: [] }
+  const r = await supabase.from('accesos_portal').select('created_at, dispositivo, navegador, ip', { count: 'exact' })
+    .eq('user_id', userId).order('created_at', { ascending: false }).limit(3)
+  if (r.error) throw new Error(r.error.message)
+  const rows = (r.data ?? []) as { created_at: string; dispositivo: string | null; navegador: string | null; ip: string | null }[]
+  return {
+    total: r.count ?? rows.length,
+    recientes: rows.map((a) => {
+      const d = a.dispositivo ?? '', n = a.navegador ?? ''
+      return {
+        date: fFechaHora(a.created_at), device: d || '—', browser: n || '—', ip: a.ip || '—',
+        dIcon: /tablet|ipad/i.test(d) ? Tablet : /cel|m[oó]vil|phone|android|iphone/i.test(d) ? Smartphone : Laptop,
+        b: /edg/i.test(n) ? 'edge' : /safari/i.test(n) && !/chrome/i.test(n) ? 'safari' : 'chrome',
+      }
+    }),
+  }
+}
 
 function BrowserIcon({ b }: { b: 'chrome' | 'edge' | 'safari' }) {
   if (b === 'chrome') return (
@@ -53,12 +80,31 @@ function BrowserIcon({ b }: { b: 'chrome' | 'edge' | 'safari' }) {
 }
 
 export default function Resumen() {
-  const pac = useSesion().sesion?.paciente
+  const sesion = useSesion().sesion
+  const pac = sesion?.paciente
   const navigate = useNavigate()
   const [banner, setBanner] = useState(() => lsGet('rns-paciente-banner') !== 'off')
   const [report, setReport] = useState<Study | null>(null)
   const [viewer, setViewer] = useState<Study | null>(null)
-  const latest = STUDIES.slice(0, 2)
+  const est = useDatos(() => (pac ? fetchMisEstudios(pac.id) : Promise.resolve([])), DEMO_ESTUDIOS, [pac?.id])
+  const acc = useDatos(() => fetchAccesosPortal(sesion?.userId), supabaseConfigurado ? { total: 0, recientes: [] } : { total: 12, recientes: ACTIVITY }, [sesion?.userId])
+  const real = est.real
+  const estudios = est.datos
+  const latest = estudios.slice(0, 2)
+
+  // Hospitales (más reciente primero) y médicos referidores derivados de los estudios reales
+  const hospitales = real
+    ? estudios.filter((e, i) => estudios.findIndex((x) => x.hospitalId === e.hospitalId) === i).map((e) => ({ name: e.hospital, city: e.city || '—', last: e.date }))
+    : HOSPITALS
+  const referidores = new Set(estudios.map((e) => e.referidorId).filter(Boolean)).size
+  const kpis = real
+    ? KPIS.map((k, i) => {
+      const v = [estudios.length, hospitales.length, acc.datos.total, referidores][i]
+      const cargando = i === 2 ? acc.cargando : est.cargando
+      return { ...k, value: cargando ? '—' : String(v), label: i === 3 && v !== 1 ? 'Médicos referidores' : k.label }
+    })
+    : KPIS
+  const pacienteModal = pac ? { patient: pac.nombre_completo, record: pac.codigo } : {}
 
   return (
     <div className="space-y-4">
@@ -106,7 +152,7 @@ export default function Resumen() {
 
       {/* KPIs */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {KPIS.map((k) => (
+        {kpis.map((k) => (
           <Link key={k.label} to={k.to} className="card group flex items-center gap-4 px-4 py-4 transition hover:border-brand-200 hover:shadow-soft">
             <span className={clsx('flex h-16 w-16 shrink-0 items-center justify-center rounded-full', k.bg, k.fg)}>
               <k.icon size={30} className={k.icon === User ? 'fill-current' : ''} />
@@ -127,8 +173,9 @@ export default function Resumen() {
             <h2 className="flex items-center gap-2.5 text-[18px] font-bold text-navy-800"><FileText size={22} className="fill-brand-600 text-white" /> Últimos estudios</h2>
             <Link to="/paciente/estudios" className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-brand-700 hover:text-brand-900">Ver todos los estudios <ArrowRight size={16} /></Link>
           </div>
+          <AvisoDatos cargando={est.cargando} error={est.error} vacio={latest.length === 0} mensaje="Aún no tienes estudios registrados en la red." />
           <div className="divide-y divide-[#eef2f8] px-4">
-            {latest.map((s) => (
+            {!est.cargando && latest.map((s) => (
               <div key={s.id} className="flex flex-col gap-3 py-3 sm:flex-row">
                 <img src={s.img} alt={s.name} className="h-[96px] w-full shrink-0 rounded-md bg-black object-cover sm:w-[102px]" />
                 <div className="min-w-0 flex-1">
@@ -137,8 +184,8 @@ export default function Resumen() {
                       <p className="text-[15px] font-bold text-navy-800">{s.name}</p>
                       <Modality m={s.mod} className="!px-2.5 !py-1" />
                     </div>
-                    <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3.5 py-1.5 text-[13px] text-emerald-700">
-                      <CheckCircle2 size={17} className="fill-emerald-600 text-white" /> {s.status}
+                    <span className={clsx('inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[13px]', s.status === 'Informe publicado' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
+                      {s.status === 'Informe publicado' ? <CheckCircle2 size={17} className="fill-emerald-600 text-white" /> : <Clock size={17} />} {s.status}
                     </span>
                   </div>
                   <div className="mt-1 flex flex-wrap items-end justify-between gap-2">
@@ -147,7 +194,9 @@ export default function Resumen() {
                       <p className="flex items-center gap-2"><MapPin size={15} className="text-brand-700" /> {s.hospital}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <button onClick={() => setReport(s)} className="inline-flex items-center gap-2 rounded-md border border-brand-300 px-3.5 py-1.5 text-[13px] font-medium text-brand-700 hover:bg-brand-50"><FileText size={16} /> Ver informe</button>
+                      {s.status === 'Informe publicado'
+                        ? <button onClick={() => setReport(s)} className="inline-flex items-center gap-2 rounded-md border border-brand-300 px-3.5 py-1.5 text-[13px] font-medium text-brand-700 hover:bg-brand-50"><FileText size={16} /> Ver informe</button>
+                        : <span className="inline-flex cursor-not-allowed items-center gap-2 rounded-md border border-slate-200 px-3.5 py-1.5 text-[13px] font-medium text-slate-400"><Clock size={16} /> Informe pendiente</span>}
                       <button onClick={() => setViewer(s)} className="inline-flex items-center gap-2 rounded-md border border-brand-300 px-3.5 py-1.5 text-[13px] font-medium text-brand-700 hover:bg-brand-50"><ImageIcon size={16} /> Ver imágenes</button>
                     </div>
                   </div>
@@ -163,8 +212,9 @@ export default function Resumen() {
             <h2 className="flex items-center gap-2.5 text-[18px] font-bold text-navy-800"><Building2 size={22} className="text-brand-600" /> Mis hospitales</h2>
             <Link to="/paciente/hospitales" className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-brand-700 hover:text-brand-900">Ver todos los hospitales <ArrowRight size={16} /></Link>
           </div>
+          <AvisoDatos cargando={est.cargando} error={est.error} vacio={hospitales.length === 0} mensaje="Aún no has visitado hospitales de la red." />
           <div className="divide-y divide-[#eef2f8]">
-            {HOSPITALS.map((h) => (
+            {!est.cargando && hospitales.slice(0, 3).map((h) => (
               <Link key={h.name} to="/paciente/hospitales" className="flex items-center gap-3 px-4 py-3 hover:bg-brand-50/40">
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700"><Building2 size={24} /></span>
                 <div className="min-w-0 flex-1">
@@ -196,7 +246,7 @@ export default function Resumen() {
               </tr>
             </thead>
             <tbody>
-              {ACTIVITY.map((a) => (
+              {acc.datos.recientes.map((a) => (
                 <tr key={a.date} className="tr">
                   <td className="td !text-[13px]"><span className="flex items-center gap-2 whitespace-nowrap"><Calendar size={16} className="text-brand-700" /> {a.date}</span></td>
                   <td className="td !text-[13px]"><span className="flex items-center gap-2"><a.dIcon size={17} className="text-brand-700" /> {a.device}</span></td>
@@ -207,11 +257,12 @@ export default function Resumen() {
               ))}
             </tbody>
           </Table>
+          <AvisoDatos cargando={acc.cargando} error={acc.error} vacio={acc.datos.recientes.length === 0} mensaje="Aún no hay accesos registrados a tu portal." className="!p-5" />
         </div>
       </section>
 
-      <ReportModal study={report} onClose={() => setReport(null)} />
-      <ViewerModal study={viewer} onClose={() => setViewer(null)} />
+      <ReportModal study={report} onClose={() => setReport(null)} {...pacienteModal} />
+      <ViewerModal study={viewer} onClose={() => setViewer(null)} {...pacienteModal} />
     </div>
   )
 }
