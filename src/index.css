@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-font-smoothing: antialiased; }
+  body { @apply bg-white font-sans text-ink; cursor: auto; }
+  h1, h2, h3, h4 { @apply text-ink; }
+  button, a, [role='button'] { cursor: pointer; }
+}
+
+@layer components {
+  .card { @apply min-w-0 rounded-xl border border-[#e6edf8] bg-white shadow-card; }
+  .card-head { @apply flex items-center justify-between gap-3 px-4 pt-3.5 pb-2; }
+  .card-title { @apply flex items-center gap-2 text-[15px] font-bold text-ink; }
+  .link-more { @apply inline-flex items-center gap-1 whitespace-nowrap text-[12px] font-semibold text-brand-600 hover:text-brand-800; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-primary { @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700; }
+  .btn-outline { @apply btn border border-brand-200 bg-white text-brand-700 hover:bg-brand-50; }
+  .btn-ghost { @apply btn text-brand-700 hover:bg-brand-50; }
+  .btn-pill { @apply rounded-full; }
+  .input { @apply w-full rounded-lg border border-[#d7e1f2] bg-white px-3 py-2 text-[13px] text-ink placeholder:text-slate-400 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100; }
+  .input-ro { @apply input bg-[#eef2f9] text-slate-500; }
+  .label { @apply mb-1 block text-[12.5px] font-medium text-ink; }
+  .req { @apply text-rd-red; }
+  .th { @apply whitespace-nowrap px-3 py-2 text-left text-[11.5px] font-semibold text-ink/80; }
+  .td { @apply px-3 py-2 text-[12px] text-slate-600; }
+  .tr { @apply border-t border-[#eef2f8] hover:bg-brand-50/40; }
+  .chip { @apply inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold; }
+  .dots-btn { @apply inline-flex h-7 w-8 items-center justify-center rounded-md border border-brand-200 text-brand-600 hover:bg-brand-50; }
+  .section-x { @apply mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-10; }
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,.25); border-radius: 6px; }
+.scroll-soft::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-soft::-webkit-scrollbar-thumb { background: #cfdcf2; border-radius: 8px; }
+
+/* Panel admin: escala el contenido en laptops para que toda la composición de las maquetas
+   quepa en pantalla sin cortar textos (equivalente a un lienzo de ~1830px). */
+@media (min-width: 1280px) and (max-width: 1599.98px) { .admin-scale { zoom: 0.84; --admin-zoom: 0.84; } }
+@media (min-width: 1600px) and (max-width: 1919.98px) { .admin-scale { zoom: 0.92; --admin-zoom: 0.92; } }
+.admin-scale .min-h-screen-z { min-height: calc(100vh / var(--admin-zoom, 1)); }
+.admin-scale .h-sidebar-z { height: calc(100vh / var(--admin-zoom, 1) - 60px); }
