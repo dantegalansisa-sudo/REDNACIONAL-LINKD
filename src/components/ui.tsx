@@ -240,20 +240,30 @@ export function Tabs({ tabs, active, onChange, className, size = 'sm' }: {
 }
 
 /* ---------- Paginación ---------- */
-export function Pagination({ text, pages = [1, 2, 3, 4, 5], last, perPage = true }: {
+export function Pagination({ text, pages = [1, 2, 3, 4, 5], last, perPage = true, page, onPage, totalPages }: {
   text: string; pages?: number[]; last?: number; perPage?: boolean
+  /** Modo controlado (datos reales): página actual, cambio de página y total de páginas */
+  page?: number; onPage?: (n: number) => void; totalPages?: number
 }) {
-  const [p, setP] = useState(1)
+  const [interna, setInterna] = useState(1)
+  const p = page ?? interna
+  const max = totalPages ?? last ?? pages[pages.length - 1] ?? 1
+  const setP = (n: number) => { const v = Math.min(Math.max(1, n), Math.max(1, max)); if (onPage) onPage(v); else setInterna(v) }
+  // En modo controlado se muestran hasta 5 páginas alrededor de la actual
+  const lista = totalPages !== undefined
+    ? Array.from({ length: Math.min(5, Math.max(1, totalPages)) }, (_, i) => Math.max(1, Math.min(p - 2, totalPages - 4)) + i).filter((n) => n <= Math.max(1, totalPages))
+    : pages
+  const ultimo = totalPages !== undefined ? (totalPages > 5 && !lista.includes(totalPages) ? totalPages : undefined) : last
   const btn = 'flex h-8 min-w-8 items-center justify-center rounded-md border border-[#d7e1f2] bg-white px-2 text-[12.5px] text-ink hover:border-brand-400'
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#eef2f8] px-4 py-3">
       <span className="text-[12.5px] text-brand-800/80">{text}</span>
       <div className="flex items-center gap-1.5">
-        <button className={btn} onClick={() => setP(Math.max(1, p - 1))}><ChevronLeft size={15} /></button>
-        {pages.map((n) => (
+        <button className={btn} onClick={() => setP(p - 1)}><ChevronLeft size={15} /></button>
+        {lista.map((n) => (
           <button key={n} onClick={() => setP(n)} className={clsx(btn, n === p && '!border-brand-600 !bg-brand-600 !text-white')}>{n}</button>
         ))}
-        {last && <><span className={clsx(btn, 'pointer-events-none')}>…</span><button onClick={() => setP(last)} className={clsx(btn, last === p && '!border-brand-600 !bg-brand-600 !text-white')}>{last.toLocaleString('en-US')}</button></>}
+        {ultimo && <><span className={clsx(btn, 'pointer-events-none')}>…</span><button onClick={() => setP(ultimo)} className={clsx(btn, ultimo === p && '!border-brand-600 !bg-brand-600 !text-white')}>{ultimo.toLocaleString('en-US')}</button></>}
         <button className={btn} onClick={() => setP(p + 1)}><ChevronRight size={15} /></button>
       </div>
       {perPage && <Select options={['10 por página', '25 por página', '50 por página']} className="w-[140px]" />}

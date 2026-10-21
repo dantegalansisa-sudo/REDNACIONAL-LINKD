@@ -10,6 +10,6 @@ export const supabaseConfigurado = Boolean(url && anonKey)
  * Cliente único de Supabase para toda la app.
  * Usa solo la clave pública (anon/publishable); la seguridad la aplican las políticas RLS de la base de datos.
  */
-export const supabase = createClient(url ?? 'http://localhost', anonKey ?? 'sin-configurar', {
+export const supabase = createClient(url || 'http://localhost', anonKey || 'sin-configurar', {
   auth: { persistSession: true, autoRefreshToken: true },
 })

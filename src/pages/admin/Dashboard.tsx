@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { Badge, DotsButton, IconCircle, Kpi, MoreLink, PageHeader, Panel, Table, clsx, type Tone } from '../../components/ui'
 import { Bars, Donut, Legend, type Slice } from '../../components/charts'
+import { fetchDashboard, num, pct, useDatos, MOD_ETIQUETA, type DashboardReal } from '../../lib/admin-data'
 
 /* ---------------- Datos mock ---------------- */
 const RANGES = ['01/03/2025 - 31/03/2025', '01/02/2025 - 28/02/2025', '01/01/2025 - 31/03/2025', '01/01/2025 - 31/12/2025']
@@ -65,9 +66,12 @@ const actividades = [
 ]
 
 /* ---------------- Sub-componentes ---------------- */
-function DateRange() {
+/** Opciones del selector con datos reales */
+const ANIO = new Date().getFullYear()
+const RANGOS_REALES = ['Últimos 30 días', 'Este mes', 'Este año', 'Últimos 12 meses']
+
+function DateRange({ opciones, range, setRange }: { opciones: string[]; range: string; setRange: (r: string) => void }) {
   const [open, setOpen] = useState(false)
-  const [range, setRange] = useState(RANGES[0])
   return (
     <div className="relative">
       <button onClick={() => setOpen(!open)} className="flex items-center gap-3 rounded-lg border border-[#d7e1f2] bg-white px-3.5 py-2.5 text-[13px] text-ink shadow-sm hover:border-brand-400">
@@ -77,7 +81,7 @@ function DateRange() {
       </button>
       {open && (
         <div className="absolute right-0 top-12 z-30 w-full min-w-[230px] overflow-hidden rounded-lg border border-[#e3eaf6] bg-white py-1 shadow-soft">
-          {RANGES.map((r) => (
+          {opciones.map((r) => (
             <button key={r} onClick={() => { setRange(r); setOpen(false) }}
               className={clsx('block w-full px-3.5 py-2 text-left text-[12.5px] tabular-nums hover:bg-brand-50', r === range && 'font-semibold text-brand-700')}>
               {r}
@@ -89,7 +93,8 @@ function DateRange() {
   )
 }
 
-function HospitalMap() {
+function HospitalMap({ conexion, niveles }: { conexion: { label: string; value: number; color: string }[]; niveles: { n: string; value: number; cls: string; bar: string }[] }) {
+  const maxNivel = Math.max(1, ...niveles.map((n) => n.value))
   const [zoom, setZoom] = useState(1)
   const navigate = useNavigate()
   const ctrl = 'flex h-8 w-8 items-center justify-center text-ink hover:bg-brand-50'
@@ -125,7 +130,7 @@ function HospitalMap() {
                 <li key={n.n} className="flex items-center gap-2">
                   <span className={clsx('flex h-[18px] w-[22px] items-center justify-center rounded text-[10px] font-bold', n.cls)}>{n.n}</span>
                   <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#e8eef8]">
-                    <span className="block h-full rounded-full" style={{ width: `${(n.value / 24) * 85}%`, background: n.bar }} />
+                    <span className="block h-full rounded-full" style={{ width: `${(n.value / maxNivel) * 85}%`, background: n.bar }} />
                   </span>
                   <span className="w-5 text-right tabular-nums text-ink">{n.value}</span>
                 </li>
@@ -150,6 +155,60 @@ function DonutCard({ title, data, center }: { title: string; data: Slice[]; cent
   )
 }
 
+function Vacio({ children }: { children: React.ReactNode }) {
+  return <li className="py-6 text-center text-[12.5px] text-slate-400">{children}</li>
+}
+
+const ICONO_ALERTA: Record<string, { icon: typeof Info; tone: Tone }> = {
+  critico: { icon: AlertTriangle, tone: 'red' }, incidencia: { icon: TriangleAlert, tone: 'orange' }, sistema: { icon: AlertTriangle, tone: 'red' },
+  sla: { icon: TriangleAlert, tone: 'orange' }, info: { icon: Info, tone: 'blue' },
+}
+const ACCION: Record<string, { t: string; icon: typeof Info; tone: Tone }> = {
+  creacion: { t: 'Registro creado', icon: UserRoundPlus, tone: 'blue' }, actualizacion: { t: 'Registro actualizado', icon: Settings2, tone: 'purple' },
+  eliminacion: { t: 'Registro eliminado', icon: TriangleAlert, tone: 'red' }, inicio_sesion: { t: 'Inicio de sesión', icon: ShieldCheck, tone: 'green' },
+}
+const COLOR_MOD: Record<string, string> = { RX: '#2f8cff', TC: '#a855f7', RM: '#f472b6', US: '#34d399', MG: '#fbbf24' }
+const TONO_ESTADO: Record<string, Tone> = {
+  'En proceso': 'orange', Completado: 'green', Pendiente: 'red', Nuevo: 'red', Asignado: 'orange', 'En lectura': 'orange',
+  Informado: 'green', 'En revisión': 'purple', Cancelado: 'gray',
+}
+
+/** Variación porcentual frente al período anterior (null si no hay base) */
+function variacion(actual: number, previo: number) {
+  if (!previo) return null
+  const v = Math.round(((actual - previo) / previo) * 100)
+  return { texto: `${Math.abs(v)}% vs. período anterior`, trend: (v >= 0 ? 'up' : 'down') as 'up' | 'down' }
+}
+
+/** Convierte los datos reales al formato de las tarjetas del Dashboard */
+function vista(d: DashboardReal) {
+  const k = d.kpis
+  const porModalidad: Slice[] = Object.entries(k.por_modalidad ?? {}).map(([m, v]) => {
+    const label = MOD_ETIQUETA[m] ?? m
+    return { label, value: v, color: COLOR_MOD[label] ?? '#9ca3af' }
+  }).sort((a, b) => b.value - a.value)
+  const e = k.por_estado ?? {}
+  const porEstado: Slice[] = [
+    { label: 'Informados', value: e.informado ?? 0, color: '#16a34a' },
+    { label: 'En proceso', value: (e.nuevo ?? 0) + (e.asignado ?? 0) + (e.en_lectura ?? 0) + (e.en_revision ?? 0), color: '#fbbf24' },
+    { label: 'Cancelados', value: e.cancelado ?? 0, color: '#ef4444' },
+  ]
+  const he = d.hospitalesPorEstado, hn = d.hospitalesPorNivel
+  return {
+    porModalidad, porEstado,
+    conexion: [
+      { label: 'Conectado', value: he.activo ?? 0, color: '#16a34a' },
+      { label: 'En proceso', value: he.en_proceso ?? 0, color: '#fbbf24' },
+      { label: 'Sin conexión', value: he.inactivo ?? 0, color: '#ef4444' },
+    ],
+    niveles: [
+      { n: 'III', value: hn.III ?? 0, cls: 'bg-violet-100 text-violet-700', bar: '#38bdf8' },
+      { n: 'II', value: hn.II ?? 0, cls: 'bg-brand-100 text-brand-700', bar: '#38bdf8' },
+      { n: 'I', value: hn.I ?? 0, cls: 'bg-amber-100 text-amber-600', bar: '#fbbf24' },
+    ],
+  }
+}
+
 function FeedItem({ icon, tone, t, s, time }: { icon: typeof Info; tone: Tone; t: string; s: string; time: string }) {
   return (
     <li className="flex items-start gap-3 border-t border-[#eef2f8] py-2.5 first:border-0 first:pt-1">
@@ -166,47 +225,79 @@ function FeedItem({ icon, tone, t, s, time }: { icon: typeof Info; tone: Tone; t
 /* ---------------- Página ---------------- */
 export default function Dashboard() {
   const navigate = useNavigate()
+  const [rango, setRango] = useState(RANGOS_REALES[0])
+  const [rangoDemo, setRangoDemo] = useState(RANGES[0])
+  const { datos: d, cargando, error, real } = useDatos<DashboardReal | null>(() => fetchDashboard(rango), null, [rango])
+  const v = d ? vista(d) : null
+  const k = d?.kpis
+  const totalEstudios = k?.estudios_recibidos ?? 0
+  const varEst = d ? variacion(k!.estudios_recibidos, d.previo.estudios_recibidos) : null
+  const varInf = d ? variacion(k!.informes_emitidos, d.previo.informes_emitidos) : null
+  const tiempo = k?.tiempo_promedio_horas
+  const tiempoPrev = d?.previo.tiempo_promedio_horas
+  const varTiempo = tiempo && tiempoPrev ? Math.round(((tiempo - tiempoPrev) / tiempoPrev) * 100) : null
+  const cargandoTxt = cargando ? '…' : undefined
   return (
     <div>
-      <PageHeader icon={LayoutGrid} title="Dashboard General" subtitle="Vista ejecutiva del estado de la red nacional de imágenes médicas" actions={<DateRange />} />
+      <PageHeader icon={LayoutGrid} title="Dashboard General" subtitle="Vista ejecutiva del estado de la red nacional de imágenes médicas"
+        actions={real ? <DateRange opciones={RANGOS_REALES} range={rango} setRange={setRango} /> : <DateRange opciones={RANGES} range={rangoDemo} setRange={setRangoDemo} />} />
+      {error && <p className="mb-3 rounded-lg bg-red-50 px-4 py-2.5 text-[13px] text-red-700">No se pudieron cargar los datos: {error}</p>}
 
       {/* KPIs */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-        <Kpi icon={Building2} tone="blue" value="58" label="Hospitales">
+        <Kpi icon={Building2} tone="blue" value={real ? cargandoTxt ?? num(k?.hospitales ?? 0) : '58'} label="Hospitales">
           <button onClick={() => navigate('/admin/hospitales')} className="mt-0.5 flex items-center gap-1 text-[12px] text-emerald-600 hover:underline">
-            <CircleCheck size={13} /> 52 activos (89.7%) <ArrowRight size={13} className="text-brand-600" />
+            <CircleCheck size={13} /> {real ? `${num(k?.hospitales_activos ?? 0)} activos (${pct(k?.hospitales_activos ?? 0, k?.hospitales ?? 0)})` : '52 activos (89.7%)'} <ArrowRight size={13} className="text-brand-600" />
           </button>
         </Kpi>
-        <Kpi icon={Database} tone="blue" value="12,458" label="Estudios recibidos" sub="12% vs. mes anterior" trend="up" />
-        <Kpi icon={FileText} tone="purple" value="11,276" label="Informes emitidos" sub="14% vs. mes anterior" trend="up" />
-        <Kpi icon={Clock} tone="orange" value="1,182" label="Estudios pendientes" sub="8% vs. mes anterior" trend="up" trendTone="bad" />
-        <Kpi icon={UserRound} tone="blue" value="36" label="Radiólogos activos">
-          <span className="mt-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">4 en convocatoria</span>
+        {real ? (
+          <>
+            <Kpi icon={Database} tone="blue" value={cargandoTxt ?? num(k?.estudios_recibidos ?? 0)} label="Estudios recibidos" sub={varEst?.texto ?? `En: ${rango.toLowerCase()}`} trend={varEst?.trend} />
+            <Kpi icon={FileText} tone="purple" value={cargandoTxt ?? num(k?.informes_emitidos ?? 0)} label="Informes emitidos" sub={varInf?.texto ?? `En: ${rango.toLowerCase()}`} trend={varInf?.trend} />
+            <Kpi icon={Clock} tone="orange" value={cargandoTxt ?? num(k?.estudios_pendientes ?? 0)} label="Estudios pendientes" sub="Sin informe publicado" />
+          </>
+        ) : (
+          <>
+            <Kpi icon={Database} tone="blue" value="12,458" label="Estudios recibidos" sub="12% vs. mes anterior" trend="up" />
+            <Kpi icon={FileText} tone="purple" value="11,276" label="Informes emitidos" sub="14% vs. mes anterior" trend="up" />
+            <Kpi icon={Clock} tone="orange" value="1,182" label="Estudios pendientes" sub="8% vs. mes anterior" trend="up" trendTone="bad" />
+          </>
+        )}
+        <Kpi icon={UserRound} tone="blue" value={real ? cargandoTxt ?? num(k?.radiologos_activos ?? 0) : '36'} label="Radiólogos activos">
+          <span className="mt-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+            {real ? `${num(k?.medicos_pendientes ?? 0)} médicos por aprobar` : '4 en convocatoria'}
+          </span>
         </Kpi>
-        <Kpi icon={AlertTriangle} tone="red" value="12" label="Incidencias críticas">
+        <Kpi icon={AlertTriangle} tone="red" value={real ? cargandoTxt ?? num(k?.incidencias_criticas ?? 0) : '12'} label="Incidencias críticas">
           <span className="mt-1 inline-flex items-center gap-1 rounded bg-red-50 px-1.5 py-0.5 text-[11px] text-red-600">
-            <span className="flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">!</span> 6 por integrar
+            <span className="flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">!</span>
+            {real ? `${num(d?.hospitalesPorEstado.en_proceso ?? 0)} hospitales por integrar` : '6 por integrar'}
           </span>
         </Kpi>
       </div>
 
       {/* Mapa + gráficos */}
       <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-12">
-        <div className="xl:col-span-5"><HospitalMap /></div>
+        <div className="xl:col-span-5"><HospitalMap conexion={v?.conexion ?? conexion} niveles={v?.niveles ?? niveles} /></div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:col-span-7">
-          <DonutCard title="Estudios por modalidad" data={porModalidad} center="12,458" />
-          <DonutCard title="Estudios por estado" data={porEstado} center="12,458" />
-          <Panel title="Estudios por mes" action={<MoreLink />}>
-            <Bars labels={meses} series={[{ name: 'Estudios', color: '#4fa3f7', values: porMes }]} max={15000} yTicks={3} height={150} barWidth={0.72} />
+          <DonutCard title="Estudios por modalidad" data={v ? (v.porModalidad.length ? v.porModalidad : [{ label: 'Sin estudios', value: 0, color: '#cbd5e1' }]) : porModalidad} center={real ? num(totalEstudios) : '12,458'} />
+          <DonutCard title="Estudios por estado" data={v?.porEstado ?? porEstado} center={real ? num(totalEstudios) : '12,458'} />
+          <Panel title={real ? `Estudios por mes (${ANIO})` : 'Estudios por mes'} action={<MoreLink />}>
+            <Bars labels={meses} series={[{ name: 'Estudios', color: '#4fa3f7', values: d?.porMes ?? (real ? Array(12).fill(0) : porMes) }]}
+              max={real ? Math.max(4, ...(d?.porMes ?? [0])) * 1.2 : 15000} yTicks={3} height={150} barWidth={0.72} />
           </Panel>
           <Panel title="Tiempo promedio de respuesta" action={<MoreLink />} bodyClass="flex items-center gap-4">
             <IconCircle icon={Timer} tone="blue" size="lg" className="!h-16 !w-16" />
             <div className="min-w-0">
               <div className="flex items-baseline gap-3">
-                <span className="text-[26px] font-bold text-ink">6.8 horas</span>
-                <span className="flex items-center text-[14px] font-semibold text-emerald-600"><ArrowDown size={15} /> 18%</span>
+                <span className="text-[26px] font-bold text-ink">{real ? (tiempo != null ? `${tiempo} horas` : '—') : '6.8 horas'}</span>
+                {real ? varTiempo != null && (
+                  <span className={clsx('flex items-center text-[14px] font-semibold', varTiempo <= 0 ? 'text-emerald-600' : 'text-red-500')}>
+                    <ArrowDown size={15} className={varTiempo > 0 ? 'rotate-180' : ''} /> {Math.abs(varTiempo)}%
+                  </span>
+                ) : <span className="flex items-center text-[14px] font-semibold text-emerald-600"><ArrowDown size={15} /> 18%</span>}
               </div>
-              <p className="text-[13px] leading-snug text-slate-500">Desde recepción del estudio<br />hasta emisión del informe</p>
+              <p className="text-[13px] leading-snug text-slate-500">{real && tiempo == null ? <>Aún no hay informes publicados<br />en este período</> : <>Desde recepción del estudio<br />hasta emisión del informe</>}</p>
             </div>
           </Panel>
         </div>
@@ -220,13 +311,16 @@ export default function Dashboard() {
               <tr>{['Fecha', 'Hospital', 'Paciente', 'Modalidad', 'Estado', 'Asignado a', ''].map((h) => <th key={h} className="th">{h}</th>)}</tr>
             </thead>
             <tbody>
-              {estudios.map((e) => (
-                <tr key={e.fecha} className="tr">
+              {real && !cargando && !d?.ultimos.length && (
+                <tr><td colSpan={7} className="td py-8 text-center text-slate-400">Aún no se han recibido estudios.</td></tr>
+              )}
+              {(real ? d?.ultimos ?? [] : estudios).map((e, i) => (
+                <tr key={e.fecha + i} className="tr">
                   <td className="td whitespace-nowrap tabular-nums">{e.fecha}</td>
                   <td className="td min-w-[140px]">{e.hospital}</td>
                   <td className="td whitespace-nowrap">{e.paciente}</td>
                   <td className="td">{e.mod}</td>
-                  <td className="td"><Badge tone={estadoTone[e.estado]} dot={false} className="min-w-[78px] justify-center py-1">{e.estado}</Badge></td>
+                  <td className="td"><Badge tone={TONO_ESTADO[e.estado] ?? estadoTone[e.estado as Estado] ?? 'gray'} dot={false} className="min-w-[78px] justify-center py-1">{e.estado}</Badge></td>
                   <td className="td whitespace-nowrap">{e.asignado}</td>
                   <td className="td"><DotsButton /></td>
                 </tr>
@@ -236,10 +330,22 @@ export default function Dashboard() {
         </Panel>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:col-span-6">
           <Panel title="Alertas y notificaciones" action={<MoreLink onClick={() => navigate('/admin/operaciones')}>Ver todas</MoreLink>}>
-            <ul>{alertas.map((a) => <FeedItem key={a.t} {...a} />)}</ul>
+            <ul>
+              {real
+                ? (d?.alertas.length ? d.alertas.map((a, i) => <FeedItem key={i} icon={ICONO_ALERTA[a.tipo]?.icon ?? Info} tone={ICONO_ALERTA[a.tipo]?.tone ?? 'blue'} t={a.t} s={a.s} time={a.time} />)
+                  : !cargando && <Vacio>No hay alertas pendientes.</Vacio>)
+                : alertas.map((a) => <FeedItem key={a.t} {...a} />)}
+            </ul>
           </Panel>
           <Panel title="Actividades recientes" action={<MoreLink onClick={() => navigate('/admin/auditoria')}>Ver todas</MoreLink>}>
-            <ul>{actividades.map((a) => <FeedItem key={a.t} {...a} />)}</ul>
+            <ul>
+              {real
+                ? (d?.actividades.length ? d.actividades.map((a, i) => {
+                    const ac = ACCION[a.accion] ?? { t: a.accion, icon: FileText, tone: 'blue' as Tone }
+                    return <FeedItem key={i} icon={ac.icon} tone={ac.tone} t={`${ac.t} · ${a.modulo}`} s={[a.registro, a.usuario].filter(Boolean).join(' — ')} time={a.time} />
+                  }) : !cargando && <Vacio>Sin actividad registrada (solo visible para administradores).</Vacio>)
+                : actividades.map((a) => <FeedItem key={a.t} {...a} />)}
+            </ul>
           </Panel>
         </div>
       </div>
