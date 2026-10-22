@@ -5,6 +5,10 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Badge, Checkbox, Kpi, Modality, PageHeader, Pagination, Select, Table, Tabs, clsx, type Tone } from '../../components/ui'
+import { supabaseConfigurado } from '../../lib/admin-data'
+
+/** En producción (Supabase configurado) la pantalla arranca vacía, sin datos de ejemplo */
+const VACIO = supabaseConfigurado
 
 /* ---------------- Datos mock ---------------- */
 type Prioridad = 'Emergencia' | 'Urgencia' | 'Hospitalizado' | 'Ambulatorio'
@@ -18,7 +22,7 @@ type Estudio = {
   lectura: string; frac: number; color: string; vence: Vence; obs: string
 }
 
-const ESTUDIOS: Estudio[] = [
+const MOCK_ESTUDIOS: Estudio[] = [
   { id: 'EST-2025-000892', fecha: '15/03/2025', hora: '10:24 a. m.', paciente: 'Juan Pérez', sexo: 'M', edad: 45, hospital: 'Hosp. Hugo Mendoza', ciudad: 'Santo Domingo', mod: 'CT', prioridad: 'Emergencia', estado: 'Nuevo', informe: 'En edición', radiologo: 'Dra. María López', lectura: '12 min', frac: 1, color: '#16a34a', vence: { t: '18 min', kind: 'critico' }, obs: 'Sospecha de ACV. Prioridad alta.' },
   { id: 'EST-2025-000891', fecha: '15/03/2025', hora: '10:18 a. m.', paciente: 'María López', sexo: 'F', edad: 62, hospital: 'Hosp. Dr. Fco. A. Gonzalvo', ciudad: 'La Romana', mod: 'XR', prioridad: 'Urgencia', estado: 'Visto', informe: 'Informado', radiologo: 'Dr. Carlos Méndez', lectura: '1 h 05 min', frac: 1, color: '#f59e0b', vence: { t: '15 min', kind: 'alerta' }, obs: 'Dolor torácico. Descartar neumotórax.' },
   { id: 'EST-2025-000890', fecha: '15/03/2025', hora: '09:55 a. m.', paciente: 'Carlos Peña', sexo: 'M', edad: 37, hospital: 'Hosp. Juan de Herrera', ciudad: 'San Juan de la Maguana', mod: 'MR', prioridad: 'Hospitalizado', estado: 'Visto', informe: 'Informado', radiologo: 'Dra. Ana Rodríguez', lectura: '3 h 42 min', frac: 1, color: '#16a34a', vence: { t: '20 h 18 min', kind: 'ok' }, obs: 'Control post quirúrgico de rodilla.' },
@@ -30,6 +34,8 @@ const ESTUDIOS: Estudio[] = [
   { id: 'EST-2025-000884', fecha: '15/03/2025', hora: '05:21 a. m.', paciente: 'Luis Santana', sexo: 'M', edad: 56, hospital: 'Hosp. Taiwán 19 de Marzo', ciudad: 'Azua', mod: 'RX', prioridad: 'Hospitalizado', estado: 'Visto', informe: 'Informado', radiologo: 'Dr. Carlos Méndez', lectura: '26 h 10 min', frac: 0.5, color: '#ef4444', vence: { t: 'Vencido', kind: 'vencido' }, obs: 'Radiografía de tórax PA y lateral.' },
   { id: 'EST-2025-000883', fecha: '15/03/2025', hora: '04:58 a. m.', paciente: 'Sofía Méndez', sexo: 'F', edad: 41, hospital: 'Hosp. Dr. Antonio Musa', ciudad: 'San Pedro de Macorís', mod: 'MR', prioridad: 'Ambulatorio', estado: 'Nuevo', informe: 'Pendiente', radiologo: '-', lectura: '-', frac: 0, color: '#16a34a', vence: { t: '6 días 12 h', kind: 'ok' }, obs: 'RM de columna lumbar.' },
 ]
+
+const ESTUDIOS: Estudio[] = VACIO ? [] : MOCK_ESTUDIOS
 
 const PRIORIDAD: Record<Prioridad, { cls: string; tone: Tone; label: string; max: string }> = {
   Emergencia: { cls: 'bg-red-50 text-red-600', tone: 'red', label: 'Emergencia Crítica', max: '< 30 min' },
@@ -87,7 +93,7 @@ function ExportButton() {
 
 /* ---------------- Página ---------------- */
 export default function Estudios() {
-  const [sel, setSel] = useState(ESTUDIOS[0].id)
+  const [sel, setSel] = useState(ESTUDIOS[0]?.id ?? '')
   const [tab, setTab] = useState(0)
   const [checked, setChecked] = useState<string[]>([])
   const [fHosp, setFHosp] = useState('TODOS los hospitales')
@@ -101,7 +107,7 @@ export default function Estudios() {
     && (fEst === 'Todos los estados' || e.estado === fEst)
     && (fInf === 'Todos los estados de informe' || e.informe === fInf)), [fHosp, fMod, fEst, fInf])
 
-  const est = ESTUDIOS.find((e) => e.id === sel) ?? ESTUDIOS[0]
+  const est: Estudio | undefined = ESTUDIOS.find((e) => e.id === sel) ?? ESTUDIOS[0]
   const allChecked = list.length > 0 && list.every((e) => checked.includes(e.id))
 
   return (
@@ -111,30 +117,42 @@ export default function Estudios() {
         actions={<ExportButton />} />
 
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
-        <Kpi icon={UserRound} tone="blue" value="1,248" label="Total de estudios (hoy)" sub="12% vs. ayer" trend="up" />
-        <Kpi icon={FileText} tone="blue" value="892" label="Nuevos" sub="71.5% del total" />
-        <Kpi icon={Eye} tone="orange" value="214" label="Vistos" sub="17.1% del total" />
-        <Kpi icon={CheckCircle2} tone="green" value="118" label="Reportados" sub="9.5% del total" />
-        <Kpi icon={TriangleAlert} tone="red" value="24" label="Fallidos" sub="1.9% del total" />
+        {VACIO ? (
+          <>
+            <Kpi icon={UserRound} tone="blue" value="0" label="Total de estudios (hoy)" sub="Sin datos aún" />
+            <Kpi icon={FileText} tone="blue" value="0" label="Nuevos" sub="Sin datos aún" />
+            <Kpi icon={Eye} tone="orange" value="0" label="Vistos" sub="Sin datos aún" />
+            <Kpi icon={CheckCircle2} tone="green" value="0" label="Reportados" sub="Sin datos aún" />
+            <Kpi icon={TriangleAlert} tone="red" value="0" label="Fallidos" sub="Sin datos aún" />
+          </>
+        ) : (
+          <>
+            <Kpi icon={UserRound} tone="blue" value="1,248" label="Total de estudios (hoy)" sub="12% vs. ayer" trend="up" />
+            <Kpi icon={FileText} tone="blue" value="892" label="Nuevos" sub="71.5% del total" />
+            <Kpi icon={Eye} tone="orange" value="214" label="Vistos" sub="17.1% del total" />
+            <Kpi icon={CheckCircle2} tone="green" value="118" label="Reportados" sub="9.5% del total" />
+            <Kpi icon={TriangleAlert} tone="red" value="24" label="Fallidos" sub="1.9% del total" />
+          </>
+        )}
       </div>
 
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
         <section className="card min-w-0 p-3 xl:col-span-7">
           <h3 className="mb-2 flex items-center gap-2 text-[14px] font-bold text-ink"><FileText size={17} className="text-brand-600" /> Tiempo promedio de reporte</h3>
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-            <TiempoCard icon={Siren} bg="bg-red-50" iconCls="bg-red-500" title="Emergencia Crítica" titleCls="text-red-600" value="28 min" valueCls="text-red-600" obj="Objetivo: < 30 min" />
-            <TiempoCard icon={AlertTriangle} bg="bg-orange-50" iconCls="bg-orange-500" title="Urgencias Generales" titleCls="text-orange-600" value="1 h 26 min" valueCls="text-orange-500" obj="Objetivo: 1–2 h" />
-            <TiempoCard icon={Hospital} bg="bg-brand-50" iconCls="bg-brand-600" title="Hospitalizado" titleCls="text-brand-700" value="18 h 40 min" valueCls="text-brand-700" obj="Objetivo: 24–48 h" />
-            <TiempoCard icon={TriangleAlert} bg="bg-violet-50" iconCls="bg-violet-600" title="Ambulatorio" titleCls="text-violet-700" value="3.6 días" valueCls="text-ink" obj="Objetivo: 3–7 días" />
+            <TiempoCard icon={Siren} bg="bg-red-50" iconCls="bg-red-500" title="Emergencia Crítica" titleCls="text-red-600" value={VACIO ? '—' : "28 min"} valueCls="text-red-600" obj="Objetivo: < 30 min" />
+            <TiempoCard icon={AlertTriangle} bg="bg-orange-50" iconCls="bg-orange-500" title="Urgencias Generales" titleCls="text-orange-600" value={VACIO ? '—' : "1 h 26 min"} valueCls="text-orange-500" obj="Objetivo: 1–2 h" />
+            <TiempoCard icon={Hospital} bg="bg-brand-50" iconCls="bg-brand-600" title="Hospitalizado" titleCls="text-brand-700" value={VACIO ? '—' : "18 h 40 min"} valueCls="text-brand-700" obj="Objetivo: 24–48 h" />
+            <TiempoCard icon={TriangleAlert} bg="bg-violet-50" iconCls="bg-violet-600" title="Ambulatorio" titleCls="text-violet-700" value={VACIO ? '—' : "3.6 días"} valueCls="text-ink" obj="Objetivo: 3–7 días" />
           </div>
         </section>
         <section className="card min-w-0 p-3 xl:col-span-5">
           <h3 className="mb-2 flex items-center gap-2 text-[14px] font-bold text-ink"><Building2 size={17} className="text-brand-600" /> Estudios próximos a vencer</h3>
           <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-            <VencerCard bg="bg-red-50" circle="bg-red-500 text-white" icon={<span className="text-[13px] font-bold">12</span>} value="12" vcls="text-red-600" l1="< 30 min" l2="Emergencia" l2cls="text-red-600" />
-            <VencerCard bg="bg-orange-50" circle="bg-orange-500 text-white" icon={<Siren size={16} />} value="28" vcls="text-orange-500" l1="< 2 horas" l2="Urgencias" />
-            <VencerCard bg="bg-amber-50" circle="bg-amber-400 text-white" icon={<Eye size={16} />} value="46" vcls="text-amber-500" l1="< 24 horas" l2="Hospitalizados" />
-            <VencerCard bg="bg-brand-50" circle="bg-brand-600 text-white" icon={<Calendar size={16} />} value="31" vcls="text-brand-700" l1="< 7 días" l2="Ambulatorios" />
+            <VencerCard bg="bg-red-50" circle="bg-red-500 text-white" icon={<span className="text-[13px] font-bold">{VACIO ? '0' : '12'}</span>} value={VACIO ? '0' : '12'} vcls="text-red-600" l1="< 30 min" l2="Emergencia" l2cls="text-red-600" />
+            <VencerCard bg="bg-orange-50" circle="bg-orange-500 text-white" icon={<Siren size={16} />} value={VACIO ? '0' : "28"} vcls="text-orange-500" l1="< 2 horas" l2="Urgencias" />
+            <VencerCard bg="bg-amber-50" circle="bg-amber-400 text-white" icon={<Eye size={16} />} value={VACIO ? '0' : "46"} vcls="text-amber-500" l1="< 24 horas" l2="Hospitalizados" />
+            <VencerCard bg="bg-brand-50" circle="bg-brand-600 text-white" icon={<Calendar size={16} />} value={VACIO ? '0' : "31"} vcls="text-brand-700" l1="< 7 días" l2="Ambulatorios" />
           </div>
         </section>
       </div>
@@ -154,7 +172,7 @@ export default function Estudios() {
             <div className="flex items-center gap-3 px-4 pb-2 pt-3.5">
               <FileText size={24} className="text-brand-600" />
               <h3 className="text-[16px] font-bold text-ink">Listado de estudios</h3>
-              <span className="rounded-md bg-brand-50 px-2 py-0.5 text-[11.5px] text-brand-700">1,248 registros</span>
+              <span className="rounded-md bg-brand-50 px-2 py-0.5 text-[11.5px] text-brand-700">{VACIO ? '0 registros' : '1,248 registros'}</span>
             </div>
             <Table className="[&_.td]:px-[5px] [&_.th]:whitespace-normal [&_.th]:px-[5px] [&_.th]:leading-tight [&_td>span.rounded-full]:gap-1 [&_td>span.rounded-full]:px-1.5 [&_td>span.rounded-full]:text-[10.5px]">
               <thead>
@@ -192,10 +210,12 @@ export default function Estudios() {
                     </td>
                   </tr>
                 ))}
-                {list.length === 0 && <tr><td colSpan={13} className="td py-8 text-center">No hay estudios con los filtros seleccionados.</td></tr>}
+                {list.length === 0 && <tr><td colSpan={13} className="td py-8 text-center text-slate-400">{VACIO ? 'Aún no hay estudios registrados' : 'No hay estudios con los filtros seleccionados.'}</td></tr>}
               </tbody>
             </Table>
-            <Pagination text="Mostrando 1 a 10 de 1,248 estudios" pages={[1, 2, 3, 4, 5]} last={125} />
+            {VACIO
+              ? <Pagination text="Mostrando 0 de 0 estudios" page={1} totalPages={1} />
+              : <Pagination text="Mostrando 1 a 10 de 1,248 estudios" pages={[1, 2, 3, 4, 5]} last={125} />}
           </section>
         </div>
 
@@ -205,6 +225,9 @@ export default function Estudios() {
             <h3 className="flex items-center gap-2 text-[14.5px] font-bold text-ink"><Eye size={17} className="text-brand-600" /> Detalle del estudio</h3>
             <button className="btn-outline px-2.5 py-1 text-[12px]"><MonitorPlay size={14} /> Ver en visor</button>
           </div>
+          {!est ? (
+            <div className="px-4 pb-8 pt-6 text-center text-[12.5px] text-slate-400">Sin registros. Selecciona un estudio cuando haya datos disponibles.</div>
+          ) : (<>
           <div className="flex gap-3 px-4">
             <img src={THUMB[est.mod]} alt={MOD_NOMBRE[est.mod]} className="h-[86px] w-[86px] shrink-0 rounded-lg bg-black object-cover" />
             <div className="min-w-0 space-y-1 text-[11.5px] leading-snug text-ink/90">
@@ -263,6 +286,7 @@ export default function Estudios() {
               </ol>
             )}
           </div>
+          </>)}
         </section>
       </div>
     </>

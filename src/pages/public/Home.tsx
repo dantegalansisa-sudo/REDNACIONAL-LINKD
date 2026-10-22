@@ -8,6 +8,7 @@ import { PublicFooter, PublicHeader, SectionTitle } from '../../layouts/PublicLa
 import { Modal } from '../../components/ui'
 import { RegisterDoctorModal } from './RegisterDoctorModal'
 import { RegisterPatientModal } from './RegisterPatientModal'
+import { useCifrasPublicas } from '../../lib/publico'
 
 const FEATURES = [
   { icon: Database, text: ['Información centralizada', 'y segura'] },
@@ -59,6 +60,8 @@ const LINKS: { src: string; alt: string; h: string; label?: string }[][] = [
 ]
 
 export default function Home({ modal }: { modal?: 'medico' | 'paciente' }) {
+  const cifras = useCifrasPublicas()
+  const stats = [cifras.hospitales, cifras.radiologos, cifras.estudios, cifras.imagenes].map((v, k) => ({ ...STATS[k], value: v }))
   const navigate = useNavigate()
   const { hash } = useLocation()
   const [video, setVideo] = useState(false)
@@ -165,7 +168,7 @@ export default function Home({ modal }: { modal?: 'medico' | 'paciente' }) {
             <img src="/img/crops/mapa-home.webp" alt="Mapa de la República Dominicana con hospitales conectados" className="w-full mix-blend-multiply" />
           </div>
           <div className="m-3 grid grid-cols-2 gap-3 rounded-xl bg-white p-4 shadow-sm md:grid-cols-4">
-            {STATS.map((s) => (
+            {stats.map((s) => (
               <div key={s.label} className="flex items-center gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600"><s.icon size={20} /></span>
                 <span>

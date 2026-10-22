@@ -7,9 +7,13 @@ import {
 } from 'lucide-react'
 import { Checkbox, Modal, Tabs, clsx } from '../../components/ui'
 import { BRAND } from '../../config/brand'
+import { fetchHospitales, supabaseConfigurado, useDatos } from '../../lib/admin-data'
+import { useSesion } from '../../lib/session'
 
 /* ---------------- Opciones ---------------- */
-const HOSPITALES = [
+type HospOpt = { n: string; p: string }
+/** Solo para el modo demostración; en producción se listan los hospitales reales de la base */
+const MOCK_HOSPITALES: HospOpt[] = [
   { n: 'Hospital Pediátrico Hugo Mendoza', p: 'Santo Domingo, DN' },
   { n: 'Hospital Dr. Marcelino Vélez', p: 'Santo Domingo Oeste' },
   { n: 'Hospital Regional Taiwán 19 de Marzo', p: 'Azua' },
@@ -188,7 +192,12 @@ function WizardContent({ onClose }: { onClose: () => void }) {
     return () => clearTimeout(t)
   }, [done, onClose])
 
-  const hospitalObj = HOSPITALES.find((h) => h.n === f.hospital)
+  // En producción se ofrecen los hospitales registrados en la base (sin datos de ejemplo)
+  const { datos: hospReales } = useDatos(fetchHospitales, [])
+  const hospitales: HospOpt[] = useMemo(
+    () => (supabaseConfigurado ? hospReales.map((h) => ({ n: h.nombre, p: h.provincia === '—' ? '' : h.provincia })) : MOCK_HOSPITALES),
+    [hospReales])
+  const hospitalObj = hospitales.find((h) => h.n === f.hospital)
   const autoMsg = useMemo(() => [
     'Estimado/a Dr(a).',
     '',
@@ -246,9 +255,9 @@ function WizardContent({ onClose }: { onClose: () => void }) {
 
           {/* Cuerpo */}
           <div className="px-5 py-4">
-            {step === 0 && <Step1 f={f} set={set} />}
+            {step === 0 && <Step1 f={f} set={set} hospitales={hospitales} />}
             {step === 1 && <Step2 f={f} set={set} />}
-            {step === 2 && <Step3 f={f} set={set} hospitalObj={hospitalObj} />}
+            {step === 2 && <Step3 f={f} set={set} hospitalObj={hospitalObj} hospitales={hospitales} />}
             {step === 3 && <Step4 f={f} set={set} mensaje={mensaje} />}
             {step === 4 && <Step5 f={f} hospitalObj={hospitalObj} goEdit={() => setStep(0)} />}
           </div>
@@ -279,7 +288,7 @@ function WizardContent({ onClose }: { onClose: () => void }) {
 type StepProps = { f: Form; set: <K extends keyof Form>(k: K, v: Form[K]) => void }
 
 /* ---------------- Paso 1 ---------------- */
-function Step1({ f, set }: StepProps) {
+function Step1({ f, set, hospitales }: StepProps & { hospitales: HospOpt[] }) {
   const [doc, setDoc] = useState('')
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.55fr_1fr]">
@@ -293,7 +302,7 @@ function Step1({ f, set }: StepProps) {
             </div>
             <div>
               <Lbl req>Hospital / Centro de salud</Lbl>
-              <Sel icon={Search} value={f.hospital} onChange={(v) => set('hospital', v)} placeholder="Seleccionar hospital / centro" options={HOSPITALES.map((h) => h.n)} />
+              <Sel icon={Search} value={f.hospital} onChange={(v) => set('hospital', v)} placeholder="Seleccionar hospital / centro" options={hospitales.map((h) => h.n)} />
             </div>
             <div>
               <Lbl req>Modalidad de servicio</Lbl>
@@ -334,7 +343,7 @@ function Step1({ f, set }: StepProps) {
             </div>
             <div>
               <Lbl info>Exclusiones (opcional)</Lbl>
-              <Sel value={f.exclusiones} onChange={(v) => set('exclusiones', v)} placeholder="Excluir médicos con hospital(es) específico(s)" options={HOSPITALES.map((h) => h.n)} />
+              <Sel value={f.exclusiones} onChange={(v) => set('exclusiones', v)} placeholder="Excluir médicos con hospital(es) específico(s)" options={hospitales.map((h) => h.n)} />
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><Lbl>Rating mínimo (opcional)</Lbl><div className="py-1.5"><StarPicker value={f.rating} onChange={(v) => set('rating', v)} /></div></div>
@@ -462,7 +471,7 @@ function Step2({ f, set }: StepProps) {
 }
 
 /* ---------------- Paso 3 ---------------- */
-function Step3({ f, set, hospitalObj }: StepProps & { hospitalObj?: { n: string; p: string } }) {
+function Step3({ f, set, hospitalObj, hospitales }: StepProps & { hospitalObj?: HospOpt; hospitales: HospOpt[] }) {
   const [changing, setChanging] = useState(false)
   return (
     <div className="space-y-4">
@@ -486,13 +495,13 @@ function Step3({ f, set, hospitalObj }: StepProps & { hospitalObj?: { n: string;
         <div className="space-y-4">
           <Section icon={Hospital} title="Hospital / Centro de salud" subtitle="Hospital o centro donde se requiere el médico">
             {changing || !hospitalObj ? (
-              <Sel value={f.hospital} onChange={(v) => { set('hospital', v); setChanging(false) }} placeholder="Seleccionar hospital / centro" options={HOSPITALES.map((h) => h.n)} icon={Search} />
+              <Sel value={f.hospital} onChange={(v) => { set('hospital', v); setChanging(false) }} placeholder="Seleccionar hospital / centro" options={hospitales.map((h) => h.n)} icon={Search} />
             ) : (
               <div className="flex items-center gap-3 rounded-lg bg-[#f6f9fe] p-2.5">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-brand-100 bg-white text-brand-600"><Hospital size={22} /></span>
                 <div className="min-w-0 flex-1 leading-tight">
                   <div className="text-[12.5px] font-semibold text-ink">{hospitalObj.n}</div>
-                  <div className="text-[11.5px] text-slate-500">{hospitalObj.p}</div>
+                  {hospitalObj.p && <div className="text-[11.5px] text-slate-500">{hospitalObj.p}</div>}
                 </div>
                 <button type="button" className="btn-outline px-3 py-1.5" onClick={() => setChanging(true)}>Cambiar</button>
               </div>
@@ -620,7 +629,13 @@ function Step4({ f, set, mensaje }: StepProps & { mensaje: string }) {
 }
 
 /* ---------------- Paso 5 ---------------- */
-function Step5({ f, hospitalObj, goEdit }: { f: Form; hospitalObj?: { n: string; p: string }; goEdit: () => void }) {
+const ROL_NOMBRE: Record<string, string> = {
+  admin: 'Administrador Nacional (SNS)', coordinador: 'Coordinador (SNS)', operador: 'Operador (SNS)',
+  radiologo: 'Médico radiólogo', referidor: 'Médico referidor', paciente: 'Paciente',
+}
+
+function Step5({ f, hospitalObj, goEdit }: { f: Form; hospitalObj?: HospOpt; goEdit: () => void }) {
+  const { sesion } = useSesion()
   const dash = <span className="text-slate-400">—</span>
   const esp = f.especialidades.filter((e) => e !== 'OT')
   const espNames = [...esp.map((e) => ESP_LARGO[e]), ...(f.especialidades.includes('OT') && f.otraEsp ? [f.otraEsp] : [])]
@@ -628,7 +643,7 @@ function Step5({ f, hospitalObj, goEdit }: { f: Form; hospitalObj?: { n: string;
   const canalTxt = canales.length > 1 ? `${canales.slice(0, -1).join(', ')} y ${canales[canales.length - 1]}` : canales[0] ?? 'Ninguno'
   const rows: { icon: LucideIcon; l: string; v: ReactNode }[] = [
     { icon: FileText, l: 'Título de la convocatoria', v: f.titulo || dash },
-    { icon: Building2, l: 'Hospital / Centro de salud', v: hospitalObj ? <>{hospitalObj.n}<br /><span className="text-slate-500">{hospitalObj.p}</span></> : dash },
+    { icon: Building2, l: 'Hospital / Centro de salud', v: hospitalObj ? <>{hospitalObj.n}{hospitalObj.p && <><br /><span className="text-slate-500">{hospitalObj.p}</span></>}</> : dash },
     { icon: Stethoscope, l: 'Especialidades requeridas', v: espNames.length ? <><b className="font-semibold">{[...esp, ...(f.especialidades.includes('OT') ? ['OT'] : [])].join(', ')}</b><br /><span className="text-slate-500">({espNames.join(', ')})</span></> : dash },
     { icon: Users, l: 'Número de radiólogos', v: f.numero },
     { icon: Briefcase, l: 'Tipo de contratación', v: f.tipo || dash },
@@ -644,13 +659,22 @@ function Step5({ f, hospitalObj, goEdit }: { f: Form; hospitalObj?: { n: string;
     { icon: FileText, l: 'Descripción', v: f.descripcion || f.descPosicion || dash },
     { icon: Bell, l: 'Notificaciones', v: <>{canalTxt}<br /><span className="text-slate-500">Recordatorio: {f.recordatorio === 'Sin recordatorio' ? 'sin recordatorio' : `${f.recordatorio} del cierre`}</span></> },
   ]
-  const creador: { icon: LucideIcon; l: string; v: string }[] = [
-    { icon: User, l: 'Usuario', v: 'Juan Pérez' },
-    { icon: ShieldCheck, l: 'Rol', v: 'Administrador Nacional (SNS)' },
-    { icon: Calendar, l: 'Fecha', v: '01/03/2025' },
-    { icon: Clock, l: 'Hora', v: '10:24 a. m.' },
-    { icon: MapPin, l: 'IP Address', v: '186.101.45.72' },
-  ]
+  const [ahora] = useState(() => new Date())
+  const creador: { icon: LucideIcon; l: string; v: string }[] = supabaseConfigurado
+    ? [
+      // En producción: el usuario conectado y la fecha/hora actual (sin datos de ejemplo)
+      { icon: User, l: 'Usuario', v: sesion?.nombre || 'Administrador' },
+      { icon: ShieldCheck, l: 'Rol', v: (sesion?.rol && ROL_NOMBRE[sesion.rol]) || 'Administrador' },
+      { icon: Calendar, l: 'Fecha', v: ahora.toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }) },
+      { icon: Clock, l: 'Hora', v: ahora.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) },
+    ]
+    : [
+      { icon: User, l: 'Usuario', v: 'Juan Pérez' },
+      { icon: ShieldCheck, l: 'Rol', v: 'Administrador Nacional (SNS)' },
+      { icon: Calendar, l: 'Fecha', v: '01/03/2025' },
+      { icon: Clock, l: 'Hora', v: '10:24 a. m.' },
+      { icon: MapPin, l: 'IP Address', v: '186.101.45.72' },
+    ]
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
       <Section icon={ClipboardList} title="Resumen de la convocatoria" subtitle="Revise la información antes de publicar"

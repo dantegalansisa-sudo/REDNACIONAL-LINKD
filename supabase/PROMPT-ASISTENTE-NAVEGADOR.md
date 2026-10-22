@@ -51,7 +51,7 @@ select (select count(*) from public.provincias)    as provincias,
        (select count(*) from storage.buckets where id in ('documentos-medicos','fotos-perfil','informes','estudios-miniaturas','institucional')) as buckets,
        (select count(*) from pg_tables where schemaname = 'public' and not rowsecurity) as tablas_sin_rls;
 
-Resultado esperado: provincias 32, hospitales 10, configuracion 8, permisos 59, buckets 5, tablas_sin_rls 0.
+Resultado esperado: provincias 32, hospitales 0, configuracion 8, permisos 59, buckets 5, tablas_sin_rls 0.
 Dime los números que salieron.
 
 Luego ve a "Table Editor" y confirma que existen estas tablas en el esquema public:
@@ -143,4 +143,4 @@ Cuando se aloje en el cPanel del cliente, estas mismas variables se colocan al c
 - **Cola de correos** (`notificaciones`): registro recibido, código de paciente, cuenta aprobada/rechazada, informe publicado, mensajes de contacto y aviso al administrador. El envío real se activa en la siguiente fase con el SMTP del cPanel.
 - **Auditoría automática** de cambios en pacientes, médicos, hospitales, estudios, informes, convocatorias, asignaciones, configuración y roles.
 - **5 carpetas de archivos privadas** (Storage) para documentos de médicos, fotos, informes PDF, miniaturas de estudios y logos.
-- **Datos iniciales**: 32 provincias con su región de salud, municipios principales, 10 hospitales de ejemplo, configuración y permisos por rol.
+- **Datos iniciales**: 32 provincias con su región de salud, municipios principales, configuración y permisos por rol.

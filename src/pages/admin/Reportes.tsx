@@ -5,6 +5,8 @@ import {
 } from 'lucide-react'
 import { Badge, Bar, DotsButton, Kpi, Modal, MoreLink, PageHeader, Panel, Select, Table, clsx } from '../../components/ui'
 import { Bars, Donut } from '../../components/charts'
+import { supabaseConfigurado } from '../../lib/admin-data'
+import { useSesion } from '../../lib/session'
 
 /* ---------- Datos mock ---------- */
 const modalidades = [
@@ -27,7 +29,7 @@ const dias = Array.from({ length: 30 }, (_, i) => String(i + 1).padStart(2, '0')
 const estudiosDia = [70, 90, 110, 105, 140, 170, 190, 220, 260, 290, 330, 210, 250, 270, 300, 260, 310, 240, 200, 280, 300, 240, 280, 320, 260, 230, 300, 250, 220, 310]
 const informesDia = estudiosDia.map((v, i) => Math.round(v * (0.42 + ((i * 7) % 10) / 40)))
 
-const topHospitales = [
+const MOCK_TOP_HOSPITALES = [
   ['HPHM - Hosp. Hugo Mendoza', '512', '23.8%', '17.1'],
   ['HRA - Hosp. Dr. Fco. A. Gonzalvo', '333', '15.5%', '11.1'],
   ['HJM - Hosp. Juan de Herrera', '218', '10.2%', '7.3'],
@@ -35,7 +37,7 @@ const topHospitales = [
   ['HGA - Hosp. Municipal La Vega', '35', '1.6%', '1.2'],
 ]
 
-const tiempos = [
+const MOCK_TIEMPOS = [
   { label: 'Tomografía (CT)', value: 48, txt: '48 min', color: '#6a9bff' },
   { label: 'Resonancia (RM)', value: 65, txt: '1 h 05 min', color: '#5cc49a' },
   { label: 'Rayos X (RX)', value: 28, txt: '28 min', color: '#fcd34d' },
@@ -43,7 +45,7 @@ const tiempos = [
   { label: 'Mamografía (MG)', value: 110, txt: '1 h 50 min', color: '#f472b6' },
 ]
 
-const regiones = [
+const MOCK_REGIONES = [
   { label: 'Cibao Sur', value: '381,001', pct: '23.8%', color: '#2f6bff' },
   { label: 'Cibao Norte', value: '298,450', pct: '18.6%', color: '#22b07d' },
   { label: 'Santo Domingo', value: '272,118', pct: '17.0%', color: '#f59e0b' },
@@ -54,13 +56,45 @@ const regiones = [
 ]
 
 type Reporte = { nombre: string; tipo: string; periodo: string; por: string; fecha: string; formato: string; estado: 'Completado' | 'Generando' }
-const RECIENTES: Reporte[] = [
+const MOCK_RECIENTES: Reporte[] = [
   { nombre: 'Estudios por hospital', tipo: 'Operativo', periodo: '01/03/2025 - 15/03/2025', por: 'Juan Pérez', fecha: '15/03/2025 10:24 a. m.', formato: 'PDF', estado: 'Completado' },
   { nombre: 'Tiempo de reporte por modalidad', tipo: 'Estadístico', periodo: '01/03/2025 - 15/03/2025', por: 'Juan Pérez', fecha: '15/03/2025 09:18 a. m.', formato: 'PDF', estado: 'Completado' },
   { nombre: 'Volumen de imágenes', tipo: 'Estadístico', periodo: '01/03/2025 - 15/03/2025', por: 'María López', fecha: '14/03/2025 06:12 p. m.', formato: 'Excel', estado: 'Completado' },
   { nombre: 'Actividad de radiólogos', tipo: 'Operativo', periodo: '01/03/2025 - 15/03/2025', por: 'Carlos Peña', fecha: '14/03/2025 11:43 a. m.', formato: 'PDF', estado: 'Completado' },
   { nombre: 'Estudios críticos', tipo: 'Seguridad', periodo: '14/03/2025 - 15/03/2025', por: 'Ana Rodríguez', fecha: '14/03/2025 08:02 a. m.', formato: 'CSV', estado: 'Completado' },
 ]
+
+const topHospitales = supabaseConfigurado ? [] : MOCK_TOP_HOSPITALES
+const tiempos = supabaseConfigurado ? MOCK_TIEMPOS.map((t) => ({ ...t, value: 0, txt: '—' })) : MOCK_TIEMPOS
+const regiones = supabaseConfigurado ? MOCK_REGIONES.map((r) => ({ ...r, value: '0', pct: '—' })) : MOCK_REGIONES
+const RECIENTES: Reporte[] = supabaseConfigurado ? [] : MOCK_RECIENTES
+const HOSPITAL_REGION = supabaseConfigurado
+  ? ['Todos', 'Cibao Sur', 'Cibao Norte', 'Santo Domingo']
+  : ['Todos', 'Cibao Sur', 'Cibao Norte', 'Santo Domingo', 'HPHM', 'HRA', 'HJM']
+
+function SinDatos({ className }: { className?: string }) {
+  return <div className={clsx('flex min-h-[150px] items-center justify-center text-center text-[12.5px] text-slate-400', className)}>Sin datos para mostrar</div>
+}
+
+const fechaCorta = (d: Date) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+const fechaHora = (d: Date) => {
+  const h = d.getHours()
+  return `${fechaCorta(d)} ${String(h % 12 || 12).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${h < 12 ? 'a. m.' : 'p. m.'}`
+}
+/** Rangos de período calculados a partir de la fecha actual (producción) */
+function periodosReales(): Record<string, string> {
+  const hoy = new Date()
+  const y = hoy.getFullYear(), m = hoy.getMonth()
+  const menos = (dias: number) => new Date(y, m, hoy.getDate() - dias)
+  const r = (a: Date, b: Date) => `${fechaCorta(a)} - ${fechaCorta(b)}`
+  return {
+    'Últimos 7 días': r(menos(6), hoy),
+    'Últimos 30 días': r(menos(29), hoy),
+    'Mes actual': r(new Date(y, m, 1), hoy),
+    'Mes anterior': r(new Date(y, m - 1, 1), new Date(y, m, 0)),
+    'Año actual': r(new Date(y, 0, 1), hoy),
+  }
+}
 
 const TIPOS_REPORTE = [
   { nombre: 'Estudios por hospital', tipo: 'Operativo' },
@@ -71,13 +105,14 @@ const TIPOS_REPORTE = [
   { nombre: 'Estudios críticos', tipo: 'Seguridad' },
   { nombre: 'Estudios por región', tipo: 'Estadístico' },
 ]
-const PERIODOS: Record<string, string> = {
+const MOCK_PERIODOS: Record<string, string> = {
   'Últimos 7 días': '09/03/2025 - 15/03/2025',
   'Últimos 30 días': '14/02/2025 - 15/03/2025',
   'Mes actual': '01/03/2025 - 15/03/2025',
   'Mes anterior': '01/02/2025 - 28/02/2025',
   'Año actual': '01/01/2025 - 15/03/2025',
 }
+const PERIODOS: Record<string, string> = supabaseConfigurado ? periodosReales() : MOCK_PERIODOS
 
 /* ---------- Modal Generar reporte ---------- */
 function GenerarModal({ open, onClose, onGenerate }: { open: boolean; onClose: () => void; onGenerate: (r: Reporte) => void }) {
@@ -85,13 +120,16 @@ function GenerarModal({ open, onClose, onGenerate }: { open: boolean; onClose: (
   const [periodo, setPeriodo] = useState('Mes actual')
   const [formato, setFormato] = useState('PDF')
   const [step, setStep] = useState<'form' | 'loading' | 'done'>('form')
+  const { sesion } = useSesion()
   const close = () => { setStep('form'); onClose() }
 
   const generar = () => {
     setStep('loading')
     setTimeout(() => {
       const t = TIPOS_REPORTE.find((x) => x.nombre === tipo) ?? TIPOS_REPORTE[0]
-      onGenerate({ nombre: t.nombre, tipo: t.tipo, periodo: PERIODOS[periodo], por: 'Juan Pérez', fecha: '15/03/2025 10:31 a. m.', formato, estado: 'Completado' })
+      const por = supabaseConfigurado ? (sesion?.nombre?.trim() || 'Administrador') : 'Juan Pérez'
+      const fecha = supabaseConfigurado ? fechaHora(new Date()) : '15/03/2025 10:31 a. m.'
+      onGenerate({ nombre: t.nombre, tipo: t.tipo, periodo: PERIODOS[periodo], por, fecha, formato, estado: 'Completado' })
       setStep('done')
     }, 1400)
   }
@@ -137,7 +175,7 @@ function GenerarModal({ open, onClose, onGenerate }: { open: boolean; onClose: (
               </div>
               <div>
                 <span className="label">Hospital / Región</span>
-                <Select options={['Todos', 'Cibao Sur', 'Cibao Norte', 'Santo Domingo', 'HPHM', 'HRA', 'HJM']} />
+                <Select options={HOSPITAL_REGION} />
               </div>
             </div>
             <div>
@@ -193,7 +231,7 @@ export default function Reportes() {
         <span className="flex items-center gap-2 text-[13px] font-medium text-ink"><CalendarDays size={18} className="text-brand-600" /> Período</span>
         <Select options={['Últimos 30 días', 'Últimos 7 días', 'Mes actual', 'Mes anterior', 'Año actual']} />
         <span className="text-[13px] font-medium text-ink">Hospital / Región</span>
-        <Select options={['Todos', 'Cibao Sur', 'Cibao Norte', 'Santo Domingo', 'HPHM', 'HRA', 'HJM']} />
+        <Select options={HOSPITAL_REGION} />
         <span className="text-[13px] font-medium text-ink">Tipo de reporte</span>
         <Select options={['Todos', 'Operativo', 'Estadístico', 'Seguridad']} />
         <span className="text-[13px] font-medium text-ink">Modalidad</span>
@@ -205,15 +243,27 @@ export default function Reportes() {
 
       {/* KPIs */}
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi icon={FileText} tone="blue" value="2,148" label="Estudios realizados" sub="18% vs. período anterior" trend="up" />
-        <Kpi icon={Database} tone="green" value="220,904" label="Imágenes de radiología" sub="12% vs. período anterior" trend="up" />
-        <Kpi icon={UserRound} tone="purple" value="112,151" label="Imágenes de cardiología" sub="9% vs. período anterior" trend="up" />
-        <Kpi icon={Clock} tone="red" value="1 h 26 min" label="Tiempo promedio de reporte" sub="22% vs. período anterior" trend="down" />
+        {supabaseConfigurado ? (
+          <>
+            <Kpi icon={FileText} tone="blue" value="0" label="Estudios realizados" sub="Sin datos aún" />
+            <Kpi icon={Database} tone="green" value="0" label="Imágenes de radiología" sub="Sin datos aún" />
+            <Kpi icon={UserRound} tone="purple" value="0" label="Imágenes de cardiología" sub="Sin datos aún" />
+            <Kpi icon={Clock} tone="red" value="—" label="Tiempo promedio de reporte" sub="Sin datos aún" />
+          </>
+        ) : (
+          <>
+            <Kpi icon={FileText} tone="blue" value="2,148" label="Estudios realizados" sub="18% vs. período anterior" trend="up" />
+            <Kpi icon={Database} tone="green" value="220,904" label="Imágenes de radiología" sub="12% vs. período anterior" trend="up" />
+            <Kpi icon={UserRound} tone="purple" value="112,151" label="Imágenes de cardiología" sub="9% vs. período anterior" trend="up" />
+            <Kpi icon={Clock} tone="red" value="1 h 26 min" label="Tiempo promedio de reporte" sub="22% vs. período anterior" trend="down" />
+          </>
+        )}
       </div>
 
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-[1.3fr_1fr_1.15fr]">
         {/* Estudios por modalidad */}
         <Panel title="Estudios por modalidad" icon={PieChart} action={<MoreLink boxed />}>
+          {supabaseConfigurado ? <SinDatos /> : (
           <div className="flex flex-col items-center gap-5 sm:flex-row">
             <Donut data={modalidades} size={170} thickness={36}
               center={<><span className="text-[19px] font-bold text-ink">2,148</span><span className="text-[12px] leading-tight text-ink/80">Estudios<br />totales</span></>} />
@@ -228,10 +278,12 @@ export default function Reportes() {
               ))}
             </ul>
           </div>
+          )}
         </Panel>
 
         {/* Estudios por estado */}
         <Panel title="Estudios por estado" icon={BarChart3} action={<MoreLink boxed />}>
+          {supabaseConfigurado ? <SinDatos /> : (
           <div className="flex flex-col items-center gap-4 sm:flex-row">
             <Donut data={estados} size={165} thickness={22}
               center={<><span className="text-[19px] font-bold text-ink">2,148</span><span className="text-[12px] leading-tight text-ink/80">Estudios<br />totales</span></>} />
@@ -246,6 +298,7 @@ export default function Reportes() {
               ))}
             </ul>
           </div>
+          )}
         </Panel>
 
         {/* Tendencia */}
@@ -254,7 +307,7 @@ export default function Reportes() {
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#2f6bff]" />Estudios</span>
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#5cc49a]" />Informes completados</span>
           </div>
-          <Bars
+          {supabaseConfigurado ? <SinDatos className="!min-h-[170px]" /> : <Bars
             labels={dias.map((d, i) => (i % 2 === 0 ? d : ''))}
             height={170}
             max={400}
@@ -264,7 +317,7 @@ export default function Reportes() {
               { name: 'Estudios', color: '#2f6bff', values: estudiosDia },
               { name: 'Informes completados', color: '#5cc49a', values: informesDia },
             ]}
-          />
+          />}
         </Panel>
 
         {/* Top hospitales */}
@@ -279,6 +332,7 @@ export default function Reportes() {
                   {h.slice(1).map((c, j) => <td key={j} className="td py-1.5 tabular-nums text-ink">{c}</td>)}
                 </tr>
               ))}
+              {topHospitales.length === 0 && <tr><td colSpan={5} className="td py-6 text-center text-slate-400">Aún no hay estudios registrados</td></tr>}
             </tbody>
           </Table>
         </Panel>
@@ -329,7 +383,7 @@ export default function Reportes() {
                 <td className="td whitespace-nowrap py-1.5 text-ink">{r.periodo}</td>
                 <td className="td whitespace-nowrap py-1.5 text-ink">{r.por}</td>
                 <td className="td whitespace-nowrap py-1.5 text-ink">{r.fecha}</td>
-                <td className="td py-1.5"><Badge tone="green" icon>{r.estado}</Badge></td>
+                <td className="td whitespace-nowrap py-1.5"><Badge tone="green" icon>{r.estado}</Badge></td>
                 <td className="td py-1.5">
                   <div className="flex items-center gap-2">
                     <button className="dots-btn" title={`Descargar ${r.formato}`} aria-label="Descargar"><FileDown size={15} /></button>
@@ -338,6 +392,7 @@ export default function Reportes() {
                 </td>
               </tr>
             ))}
+            {recientes.length === 0 && <tr><td colSpan={8} className="td py-6 text-center text-slate-400">Aún no hay reportes generados</td></tr>}
           </tbody>
         </Table>
       </Panel>

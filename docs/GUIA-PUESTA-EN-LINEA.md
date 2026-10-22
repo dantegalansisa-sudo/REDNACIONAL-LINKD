@@ -162,16 +162,12 @@ Si un correo no llega: Supabase → Table Editor → `notificaciones` → column
 
 ---
 
-## 5. 🤖 Limpieza de pruebas
+## 5. 🤖 Dejar el sistema vacío antes de las pruebas de integración
 
-Durante las pruebas automáticas se crearon en el proyecto de prueba: el paciente **RNS-00000001 (PRUEBA Paciente Claude)**,
-el médico **PRUEBA Médico Claude (exequátur 953306)** y un mensaje de contacto. Para borrarlos (SQL Editor):
-
-```sql
-delete from public.mensajes_contacto where nombre like 'PRUEBA%';
-delete from auth.users where email like 'prueba.medico.%@rednacionalsalud.com'
-   or id in (select user_id from public.pacientes where nombres = 'PRUEBA');
-```
+El script `supabase/005_vaciar_sistema.sql` borra todos los datos (usuarios, pacientes, médicos, hospitales,
+estudios, notificaciones, auditoría…) y reinicia los códigos, conservando la estructura, provincias,
+configuración y permisos. Los archivos de Storage se vacían desde el panel. Para las pruebas se usan
+siempre nombres genéricos ("Radiologo Demo1", "Paciente Demo1"…), nunca nombres reales.
 
 ---
 

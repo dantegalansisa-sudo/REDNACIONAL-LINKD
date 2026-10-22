@@ -9,6 +9,10 @@ import {
   Table, Tabs, UserSilhouette, clsx, type Tone,
 } from '../../components/ui'
 import { Donut } from '../../components/charts'
+import { supabaseConfigurado } from '../../lib/admin-data'
+
+/** En producción (Supabase configurado) la pantalla arranca vacía, sin datos de ejemplo */
+const VACIO = supabaseConfigurado
 
 /* ---------------- Datos mock ---------------- */
 type Estado = 'Activa' | 'Pendiente' | 'Suspendida' | 'Finalizada'
@@ -19,7 +23,7 @@ type Asig = {
   carga: number; capacidad: number; estado: Estado; turno: string; email: string; tel: string; sla: string
 }
 
-const ASIGS: Asig[] = [
+const MOCK_ASIGS: Asig[] = [
   { id: 'ASG-0142', rad: 'Dr. Carlos Méndez', radId: 'RAD-001', hospital: 'Hospital Pediátrico Hugo Mendoza', codigo: 'H-001', region: 'Ozama', mods: ['CT', 'MR'], fecha: '12/01/2025', carga: 132, capacidad: 160, estado: 'Activa', turno: 'Lunes a viernes · 08:00 - 16:00', email: 'c.mendez@email.com', tel: '809-555-0202', sla: '6 horas' },
   { id: 'ASG-0151', rad: 'Dr. Carlos Méndez', radId: 'RAD-001', hospital: 'Hospital Dr. Marcelino Vélez', codigo: 'H-002', region: 'Ozama', mods: ['CT'], fecha: '05/03/2025', carga: 116, capacidad: 160, estado: 'Activa', turno: 'Guardia remota · 16:00 - 22:00', email: 'c.mendez@email.com', tel: '809-555-0202', sla: '8 horas' },
   { id: 'ASG-0137', rad: 'Dra. Ana Rodríguez', radId: 'RAD-002', hospital: 'Hospital Dr. Marcelino Vélez', codigo: 'H-002', region: 'Ozama', mods: ['RX', 'US'], fecha: '18/02/2025', carga: 188, capacidad: 200, estado: 'Activa', turno: 'Lunes a sábado · 07:00 - 15:00', email: 'a.rodriguez@email.com', tel: '829-555-0412', sla: '4 horas' },
@@ -32,11 +36,11 @@ const ASIGS: Asig[] = [
   { id: 'ASG-0098', rad: 'Dr. Pedro Martínez', radId: 'RAD-007', hospital: 'Hospital Juan Pablo Pina', codigo: 'H-006', region: 'Valdesia', mods: ['US'], fecha: '03/11/2024', carga: 0, capacidad: 120, estado: 'Finalizada', turno: 'Finalizada el 28/02/2025', email: 'p.martinez@email.com', tel: '849-555-1462', sla: '8 horas' },
 ]
 
-const RADIOLOGOS = ['Dr. Carlos Méndez', 'Dra. Ana Rodríguez', 'Dr. Luis Santana', 'Dra. María Gómez', 'Dr. José Castillo', 'Dra. Laura Sánchez', 'Dr. Pedro Martínez', 'Dra. Claudia Jiménez', 'Dr. Rafael Pineda', 'Dra. Isabel Torres']
-const HOSPITALES = ['Hospital Pediátrico Hugo Mendoza', 'Hospital Dr. Marcelino Vélez', 'Hospital Padre Billini', 'Hospital Dr. Francisco Moscoso Puello', 'Hospital Traumatológico Ney Arias Lora', 'Hospital Juan Pablo Pina', 'Hospital Regional Taiwán 19 de Marzo', 'Hospital Regional San Juan de la Maguana', 'Hospital Dr. Alejandro Cabral', 'Hospital Regional Antonio Musa']
+const MOCK_RADIOLOGOS = ['Dr. Carlos Méndez', 'Dra. Ana Rodríguez', 'Dr. Luis Santana', 'Dra. María Gómez', 'Dr. José Castillo', 'Dra. Laura Sánchez', 'Dr. Pedro Martínez', 'Dra. Claudia Jiménez', 'Dr. Rafael Pineda', 'Dra. Isabel Torres']
+const MOCK_HOSPITALES = ['Hospital Pediátrico Hugo Mendoza', 'Hospital Dr. Marcelino Vélez', 'Hospital Padre Billini', 'Hospital Dr. Francisco Moscoso Puello', 'Hospital Traumatológico Ney Arias Lora', 'Hospital Juan Pablo Pina', 'Hospital Regional Taiwán 19 de Marzo', 'Hospital Regional San Juan de la Maguana', 'Hospital Dr. Alejandro Cabral', 'Hospital Regional Antonio Musa']
 const MODS = ['RX', 'CT', 'MR', 'US', 'MG']
 
-const cobertura = [
+const MOCK_COBERTURA = [
   { r: 'Metropolitana (Ozama)', h: 18, cub: 18, rad: 74 },
   { r: 'Norcentral (Cibao Central)', h: 9, cub: 8, rad: 31 },
   { r: 'Este', h: 7, cub: 6, rad: 18 },
@@ -47,12 +51,20 @@ const cobertura = [
   { r: 'Cibao Occidental', h: 4, cub: 3, rad: 8 },
 ]
 
-const pendientes = [
+const MOCK_PENDIENTES = [
   { h: 'Hospital Dr. Alejandro Cabral', m: ['CT'], f: '14/03/2025', p: 'Alta' },
   { h: 'Hospital Provincial de Azua', m: ['RX', 'US'], f: '13/03/2025', p: 'Media' },
   { h: 'Hospital Regional Jaime Mota', m: ['CT', 'MR'], f: '12/03/2025', p: 'Alta' },
   { h: 'Hospital San Vicente de Paúl', m: ['MG'], f: '11/03/2025', p: 'Baja' },
 ]
+
+const ASIGS: Asig[] = VACIO ? [] : MOCK_ASIGS
+const RADIOLOGOS: string[] = VACIO ? [] : MOCK_RADIOLOGOS
+const HOSPITALES: string[] = VACIO ? [] : MOCK_HOSPITALES
+const cobertura = VACIO ? [] : MOCK_COBERTURA
+const pendientes = VACIO ? [] : MOCK_PENDIENTES
+/** Regiones de salud para el filtro (catálogo, no datos de ejemplo) */
+const REGIONES_FILTRO = MOCK_COBERTURA.map((c) => c.r)
 
 const cargaColor = (pct: number) => (pct >= 90 ? '#ef4444' : pct >= 75 ? '#f59e0b' : '#16a34a')
 
@@ -98,7 +110,7 @@ function DetalleAsig({ a }: { a: Asig }) {
 }
 
 function NuevaAsignacion({ onDone }: { onDone: () => void }) {
-  const [mods, setMods] = useState<string[]>(['CT'])
+  const [mods, setMods] = useState<string[]>(VACIO ? [] : ['CT'])
   const [ok, setOk] = useState(false)
   if (ok) {
     return (
@@ -127,11 +139,11 @@ function NuevaAsignacion({ onDone }: { onDone: () => void }) {
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div><label className="label">Fecha de inicio</label><input type="date" className="input" defaultValue="2025-03-17" /></div>
+        <div><label className="label">Fecha de inicio</label><input type="date" className="input" defaultValue={VACIO ? undefined : '2025-03-17'} /></div>
         <div><label className="label">Fecha de fin</label><input type="date" className="input" /></div>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div><label className="label">Capacidad mensual</label><input type="number" className="input" defaultValue={150} min={1} /></div>
+        <div><label className="label">Capacidad mensual</label><input type="number" className="input" defaultValue={VACIO ? undefined : 150} min={1} placeholder="Ej. 150" /></div>
         <div><label className="label">SLA de respuesta</label><Select options={['4 horas', '6 horas', '8 horas', '12 horas', '24 horas']} value="6 horas" /></div>
       </div>
       <div><label className="label">Horario / turno</label><Select options={['Lunes a viernes · 08:00 - 16:00', 'Lunes a viernes · 14:00 - 22:00', 'Guardia remota · 16:00 - 22:00', 'Fines de semana · 08:00 - 20:00', 'Cobertura 24/7']} /></div>
@@ -179,11 +191,23 @@ export default function Asignaciones() {
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <Kpi icon={CalendarCheck} tone="blue" value="214" label="Asignaciones activas" sub="9% vs. mes anterior" trend="up" />
-        <Kpi icon={UserRoundX} tone="orange" value="56" label="Radiólogos sin asignar" sub="19.5% del total" />
-        <Kpi icon={Building2} tone="green" value="49 / 58" label="Hospitales con cobertura" sub="84.5% de la red" />
-        <Kpi icon={Clock} tone="purple" value="17" label="Solicitudes pendientes" sub="5 con prioridad alta" />
-        <Kpi icon={GaugeIcon} tone="teal" value="78%" label="Carga promedio" sub="de la capacidad asignada" />
+        {VACIO ? (
+          <>
+            <Kpi icon={CalendarCheck} tone="blue" value="0" label="Asignaciones activas" sub="Sin datos aún" />
+            <Kpi icon={UserRoundX} tone="orange" value="0" label="Radiólogos sin asignar" sub="Sin datos aún" />
+            <Kpi icon={Building2} tone="green" value="0 / 0" label="Hospitales con cobertura" sub="Sin datos aún" />
+            <Kpi icon={Clock} tone="purple" value="0" label="Solicitudes pendientes" sub="Sin datos aún" />
+            <Kpi icon={GaugeIcon} tone="teal" value="—" label="Carga promedio" sub="Sin datos aún" />
+          </>
+        ) : (
+          <>
+            <Kpi icon={CalendarCheck} tone="blue" value="214" label="Asignaciones activas" sub="9% vs. mes anterior" trend="up" />
+            <Kpi icon={UserRoundX} tone="orange" value="56" label="Radiólogos sin asignar" sub="19.5% del total" />
+            <Kpi icon={Building2} tone="green" value="49 / 58" label="Hospitales con cobertura" sub="84.5% de la red" />
+            <Kpi icon={Clock} tone="purple" value="17" label="Solicitudes pendientes" sub="5 con prioridad alta" />
+            <Kpi icon={GaugeIcon} tone="teal" value="78%" label="Carga promedio" sub="de la capacidad asignada" />
+          </>
+        )}
       </div>
 
       {/* Filtros */}
@@ -191,14 +215,14 @@ export default function Asignaciones() {
         <SearchInput placeholder="Buscar por radiólogo, hospital o código..." />
         <div><label className="label">Hospital</label><Select options={['Todos', ...HOSPITALES]} /></div>
         <div><label className="label">Modalidad</label><Select options={['Todas', ...MODS]} /></div>
-        <div><label className="label">Región</label><Select options={['Todas', ...cobertura.map((c) => c.r)]} /></div>
+        <div><label className="label">Región</label><Select options={['Todas', ...REGIONES_FILTRO]} /></div>
         <div><label className="label">Estado</label><Select options={['Todos', 'Activa', 'Pendiente', 'Suspendida', 'Finalizada']} onChange={setEstado} /></div>
         <button onClick={() => { setFk(fk + 1); setEstado('Todos') }} className="btn-outline justify-center px-10">Limpiar</button>
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-12">
         <div className="flex min-w-0 flex-col gap-3 xl:col-span-8">
-          <Panel title="Listado de asignaciones" subtitle={`${rows.length === ASIGS.length ? 248 : rows.length} asignaciones encontradas`} bodyClass="px-0 pb-0">
+          <Panel title="Listado de asignaciones" subtitle={`${rows.length === ASIGS.length ? (VACIO ? 0 : 248) : rows.length} asignaciones encontradas`} bodyClass="px-0 pb-0">
             <Table>
               <thead className="bg-[#f6f9fe]">
                 <tr>{['Radiólogo', 'Hospital', 'Modalidades', 'Fecha de asignación', 'Carga de estudios', 'Estado', ''].map((x) => <th key={x} className="th">{x}</th>)}</tr>
@@ -234,10 +258,12 @@ export default function Asignaciones() {
                     </tr>
                   )
                 })}
-                {rows.length === 0 && <tr><td colSpan={7} className="td py-6 text-center">No hay asignaciones con ese estado</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={7} className="td py-6 text-center text-slate-400">{VACIO ? 'Aún no hay asignaciones registradas' : 'No hay asignaciones con ese estado'}</td></tr>}
               </tbody>
             </Table>
-            <Pagination text="Mostrando 1 a 10 de 248 asignaciones" pages={[1, 2, 3, 4, 5]} last={25} />
+            {VACIO
+              ? <Pagination text="Mostrando 0 de 0 asignaciones" page={1} totalPages={1} />
+              : <Pagination text="Mostrando 1 a 10 de 248 asignaciones" pages={[1, 2, 3, 4, 5]} last={25} />}
           </Panel>
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.6fr_1fr]">
@@ -262,6 +288,7 @@ export default function Asignaciones() {
                       </tr>
                     )
                   })}
+                  {cobertura.length === 0 && <tr><td colSpan={5} className="td py-6 text-center text-slate-400">Sin datos de cobertura aún</td></tr>}
                 </tbody>
               </Table>
             </Panel>
@@ -277,6 +304,7 @@ export default function Asignaciones() {
                     <Badge tone={p.p === 'Alta' ? 'red' : p.p === 'Media' ? 'orange' : 'gray'}>{p.p}</Badge>
                   </li>
                 ))}
+                {pendientes.length === 0 && <li className="py-6 text-center text-[12.5px] text-slate-400">No hay solicitudes pendientes</li>}
               </ul>
               <button onClick={() => setTab(1)} className="btn-outline mt-2 w-full justify-center gap-1.5 text-[12.5px]"><Plus size={15} /> Asignar radiólogo</button>
             </Panel>
@@ -286,7 +314,9 @@ export default function Asignaciones() {
         <section className="card self-start xl:col-span-4">
           <Tabs className="mx-4 mt-2" size="md" tabs={[{ label: 'Detalle de asignación', icon: CalendarCheck }, { label: 'Nueva asignación', icon: Plus }]} active={tab} onChange={setTab} />
           <div className="p-4">
-            {tab === 0 ? <DetalleAsig a={ASIGS[sel]} /> : <NuevaAsignacion onDone={() => setTab(0)} />}
+            {tab === 0
+              ? (ASIGS[sel] ? <DetalleAsig a={ASIGS[sel]} /> : <div className="py-10 text-center text-[12.5px] text-slate-400">Sin registros. Crea una asignación para ver aquí su detalle.</div>)
+              : <NuevaAsignacion onDone={() => setTab(0)} />}
           </div>
         </section>
       </div>

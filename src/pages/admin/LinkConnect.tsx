@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { Badge, DotsButton, IconCircle, InfoRow, Kpi, MoreLink, PageHeader, Panel, Table, clsx, type Tone } from '../../components/ui'
 import { Gauge, Lines } from '../../components/charts'
+import { supabaseConfigurado } from '../../lib/admin-data'
 
 /* ---------------- Datos mock ---------------- */
 type Estado = 'Conectado' | 'En sincronización' | 'Desconectado'
@@ -30,7 +31,7 @@ const mk = (i: number, hospital: string, ubicacion: string, estado: Estado, cone
   }
 }
 
-const LINKS: LC[] = [
+const MOCK_LINKS: LC[] = [
   mk(1, 'Hospital Pediátrico Hugo Mendoza', 'Santo Domingo, DN', 'Conectado', '12/03/2025 10:24', 98, [18, 42, 31]),
   mk(2, 'Hospital Dr. Marcelino Vélez', 'Santo Domingo, DN', 'Conectado', '12/03/2025 10:22', 78, [24, 51, 44]),
   mk(3, 'Hospital Padre Billini', 'Santo Domingo, DN', 'Conectado', '12/03/2025 10:20', 65, [12, 38, 27], 'HPE', 'ProLiant DL380 Gen10'),
@@ -43,24 +44,28 @@ const LINKS: LC[] = [
   mk(10, 'Hospital Regional Antonio Musa', 'San Pedro de Macoris', 'Conectado', '12/03/2025 10:06', 67, [14, 30, 18]),
 ]
 
+const LINKS: LC[] = supabaseConfigurado ? [] : MOCK_LINKS
+
 const ACTION_ICONS: LucideIcon[] = [RefreshCw, BarChart3, ShieldCheck, BarChart3, RefreshCw, BarChart3, BarChart3, BarChart3, RefreshCw, BarChart3]
 
-const alertas: { icon: LucideIcon; tone: Tone; t: string; s?: string; d: string }[] = [
+const MOCK_ALERTAS: { icon: LucideIcon; tone: Tone; t: string; s?: string; d: string }[] = [
   { icon: AlertTriangle, tone: 'red', t: 'Error de conexión', s: 'Hospital Regional San Juan de la Maguana', d: '12/03/2025 09:42' },
   { icon: TriangleAlert, tone: 'orange', t: 'Retraso en sincronización', s: 'Hospital Traumatológico Ney Arias Lora', d: '12/03/2025 08:15' },
   { icon: Info, tone: 'blue', t: 'Reinicio del servicio LINKConnect', d: '11/03/2025 22:30' },
   { icon: ShieldCheck, tone: 'green', t: 'Actualización de seguridad aplicada', d: '10/03/2025 16:20' },
   { icon: Info, tone: 'blue', t: 'Alta de nuevo hospital', s: 'Hospital Regional Antonio Musa', d: '10/03/2025 11:45' },
 ]
+const alertas = supabaseConfigurado ? [] : MOCK_ALERTAS
 
 type Mov = { f: string; h: string; e: string; st: 'Exitoso' | 'Fallido' | 'Reenviado' }
-const movimientos: Mov[] = [
+const MOCK_MOVIMIENTOS: Mov[] = [
   { f: '12/03/2025 10:24', h: 'H-001', e: 'Envío de estudio', st: 'Exitoso' },
   { f: '12/03/2025 10:18', h: 'H-004', e: 'Recepción de estudio', st: 'Exitoso' },
   { f: '12/03/2025 09:42', h: 'H-008', e: 'Error de transmisión', st: 'Fallido' },
   { f: '12/03/2025 08:15', h: 'H-005', e: 'Reenvío de estudio', st: 'Reenviado' },
   { f: '12/03/2025 07:32', h: 'H-002', e: 'Envío de estudio', st: 'Exitoso' },
 ]
+const movimientos: Mov[] = supabaseConfigurado ? [] : MOCK_MOVIMIENTOS
 const movStyle: Record<Mov['st'], { tone: Tone; icon: LucideIcon }> = {
   Exitoso: { tone: 'green', icon: Check }, Fallido: { tone: 'red', icon: X }, Reenviado: { tone: 'blue', icon: RefreshCw },
 }
@@ -71,7 +76,7 @@ const enviados = wave(1050, 230, 0.4)
 const fallidos = wave(70, 30, 1.7)
 const reenviados = wave(45, 20, 2.6)
 
-const config: [string, ReactNode][] = [
+const MOCK_CONFIG: [string, ReactNode][] = [
   ['Protocolo de integración', 'DICOM / HL7'],
   ['Repositorio Nacional', 'Activo (https://repo.sns.gob.do)'],
   ['Nombre Host (DICOM)', 'hphm-linkconnect'],
@@ -86,15 +91,35 @@ const config: [string, ReactNode][] = [
   ['Servidor de respaldo', <Badge key="bk" tone="green" dot={false}>Activo</Badge>],
   ['Certificado SSL', 'Válido (hasta 01/2026)'],
 ]
+const CONFIG_VACIA: [string, ReactNode][] = [
+  ['Protocolo de integración', 'DICOM / HL7'],
+  ['Repositorio Nacional', '—'],
+  ['Nombre Host (DICOM)', '—'],
+  ['IP Address (DICOM)', '—'],
+  ['Puerto (DICOM)', '—'],
+  ['AETitle (DICOM)', '—'],
+  ['Integración HL7', '—'],
+  ['Integración XRoad', '—'],
+  ['Tiempo de espera (timeout)', '—'],
+  ['Reintentos automáticos', '—'],
+  ['Horario de operación', '—'],
+  ['Servidor de respaldo', '—'],
+  ['Certificado SSL', '—'],
+]
+const config = supabaseConfigurado ? CONFIG_VACIA : MOCK_CONFIG
+
+function SinDatos({ texto = 'Sin datos para mostrar', className }: { texto?: string; className?: string }) {
+  return <div className={clsx('flex min-h-[120px] items-center justify-center text-center text-[12.5px] text-slate-400', className)}>{texto}</div>
+}
 
 /* ---------------- Página ---------------- */
 export default function LinkConnect() {
   const navigate = useNavigate()
   const [sel, setSel] = useState(0)
   const [q, setQ] = useState('')
-  const lc = LINKS[sel]
+  const lc: LC | undefined = LINKS[sel]
   const rows = LINKS.map((l, i) => ({ l, i })).filter(({ l }) => (l.hospital + l.codigo + l.ubicacion).toLowerCase().includes(q.toLowerCase()))
-  const online = lc.estado !== 'Desconectado'
+  const online = lc ? lc.estado !== 'Desconectado' : false
 
   return (
     <div>
@@ -111,18 +136,30 @@ export default function LinkConnect() {
         subtitle="Gestión de conexiones, recepción y envío de estudios al Repositorio Nacional"
         actions={
           <button className="flex items-center gap-3 rounded-lg border border-[#d7e1f2] bg-white px-3.5 py-2.5 text-[13px] text-ink shadow-sm hover:border-brand-400">
-            <CalendarDays size={17} className="text-brand-600" /> 01/03/2025 - 31/03/2025 <ChevronDown size={15} />
+            <CalendarDays size={17} className="text-brand-600" /> {supabaseConfigurado ? 'Seleccionar período' : '01/03/2025 - 31/03/2025'} <ChevronDown size={15} />
           </button>
         }
       />
 
       {/* KPIs */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <Kpi icon={Link2} tone="blue" value={<span className="flex items-center gap-2">12 <span className="ml-auto rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">100%</span></span>} label="Hospitales conectados" sub="de 12 registrados" />
-        <Kpi icon={CloudUpload} tone="blue" value="8,432" label="Estudios enviados" sub="12% vs. mes anterior" trend="up" />
-        <Kpi icon={AlertTriangle} tone="red" value="214" label="Estudios fallidos" sub="-32% vs. mes anterior" trend="down" />
-        <Kpi icon={RefreshCw} tone="blue" value="367" label="Estudios reenviados" sub="-18% vs. mes anterior" trend="down" />
-        <Kpi icon={Clock} tone="blue" value="2.8 min" label="Tiempo promedio de envío" sub="-45% vs. mes anterior" trend="down" />
+        {supabaseConfigurado ? (
+          <>
+            <Kpi icon={Link2} tone="blue" value="0" label="Hospitales conectados" sub="Sin datos aún" />
+            <Kpi icon={CloudUpload} tone="blue" value="0" label="Estudios enviados" sub="Sin datos aún" />
+            <Kpi icon={AlertTriangle} tone="red" value="0" label="Estudios fallidos" sub="Sin datos aún" />
+            <Kpi icon={RefreshCw} tone="blue" value="0" label="Estudios reenviados" sub="Sin datos aún" />
+            <Kpi icon={Clock} tone="blue" value="—" label="Tiempo promedio de envío" sub="Sin datos aún" />
+          </>
+        ) : (
+          <>
+            <Kpi icon={Link2} tone="blue" value={<span className="flex items-center gap-2">12 <span className="ml-auto rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">100%</span></span>} label="Hospitales conectados" sub="de 12 registrados" />
+            <Kpi icon={CloudUpload} tone="blue" value="8,432" label="Estudios enviados" sub="12% vs. mes anterior" trend="up" />
+            <Kpi icon={AlertTriangle} tone="red" value="214" label="Estudios fallidos" sub="-32% vs. mes anterior" trend="down" />
+            <Kpi icon={RefreshCw} tone="blue" value="367" label="Estudios reenviados" sub="-18% vs. mes anterior" trend="down" />
+            <Kpi icon={Clock} tone="blue" value="2.8 min" label="Tiempo promedio de envío" sub="-45% vs. mes anterior" trend="down" />
+          </>
+        )}
       </div>
 
       {/* Tabla + detalle */}
@@ -166,12 +203,22 @@ export default function LinkConnect() {
                   </tr>
                 )
               })}
-              {rows.length === 0 && <tr><td colSpan={6} className="td py-6 text-center">Sin resultados</td></tr>}
+              {rows.length === 0 && (
+                <tr><td colSpan={6} className="td py-6 text-center text-slate-400">{LINKS.length === 0 ? 'Aún no hay LINKConnect instalados' : 'Sin resultados'}</td></tr>
+              )}
             </tbody>
           </Table>
         </Panel>
 
         <div className="flex flex-col gap-3 xl:col-span-5">
+          {!lc ? (
+            <section className="card p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="card-title"><Server size={20} className="text-brand-600" /> Detalle del LINKConnect</h3>
+              </div>
+              <SinDatos texto="Aún no hay LINKConnect instalados" className="min-h-[200px]" />
+            </section>
+          ) : (
           <section className="card p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h3 className="card-title"><Server size={20} className="text-brand-600" /> LINKConnect de {lc.hospital.replace('Hospital Pediátrico', 'Hospital P.')}</h3>
@@ -215,8 +262,10 @@ export default function LinkConnect() {
               </div>
             </div>
           </section>
+          )}
 
           <Panel title="Últimas alertas" icon={Clock} action={<MoreLink onClick={() => navigate('/admin/operaciones')}>Ver todas</MoreLink>}>
+            {alertas.length === 0 && <SinDatos texto="Aún no hay alertas registradas" className="min-h-[80px]" />}
             <ul className="space-y-1">
               {alertas.map((a) => (
                 <li key={a.t} className="flex items-start gap-2.5 py-1">
@@ -245,7 +294,7 @@ export default function LinkConnect() {
               </div>
             }
           >
-            <Lines
+            {supabaseConfigurado ? <SinDatos className="min-h-[190px]" /> : <Lines
               labels={['01/03', '05/03', '10/03', '15/03', '20/03', '25/03', '31/03']}
               series={[
                 { name: 'Enviados', color: '#2f8cff', values: enviados },
@@ -254,7 +303,7 @@ export default function LinkConnect() {
               ]}
               max={2000}
               height={190}
-            />
+            />}
           </Panel>
           <Panel title="Últimos movimientos" action={<MoreLink>Ver todas</MoreLink>} bodyClass="px-0 pb-2">
             <Table>
@@ -271,6 +320,7 @@ export default function LinkConnect() {
                     </tr>
                   )
                 })}
+                {movimientos.length === 0 && <tr><td colSpan={4} className="td py-6 text-center text-slate-400">Aún no hay movimientos registrados</td></tr>}
               </tbody>
             </Table>
           </Panel>

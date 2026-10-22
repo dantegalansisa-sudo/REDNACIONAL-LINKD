@@ -8,6 +8,8 @@ import {
   Table, Tabs, Toggle, UserSilhouette, clsx, type Tone,
 } from '../../components/ui'
 import { BRAND } from '../../config/brand'
+import { supabase } from '../../lib/supabase'
+import { fFecha, fFechaHora, hace, num, supabaseConfigurado, useDatos } from '../../lib/admin-data'
 
 /* ---------- Datos mock ---------- */
 type Usuario = {
@@ -337,11 +339,379 @@ function NuevoUsuarioModal({ open, onClose }: { open: boolean; onClose: () => vo
   )
 }
 
+/* =====================================================================
+ * Datos reales (Supabase). Sin Supabase configurado se usan los de ejemplo de arriba.
+ * ===================================================================== */
+const ROL_LABEL: Record<string, string> = {
+  admin: 'Administrador', coordinador: 'Coordinador', operador: 'Operador', radiologo: 'Radiólogo', referidor: 'Médico referidor', paciente: 'Paciente',
+}
+const ORDEN_ROLES = ['admin', 'coordinador', 'operador', 'radiologo', 'referidor', 'paciente']
+const rolLabel = (r: string | null) => (r ? ROL_LABEL[r] ?? r : 'Sin rol')
+const rolChip = (r: string | null) => rolStyle[rolLabel(r)] ?? 'bg-slate-100 text-slate-600'
+const ESTADO_CUENTA: Record<string, { t: string; tone: Tone }> = {
+  activo: { t: 'Activo', tone: 'green' }, inactivo: { t: 'Inactivo', tone: 'gray' }, bloqueado: { t: 'Bloqueado', tone: 'red' },
+}
+const ACCION_LABEL: Record<string, string> = {
+  inicio_sesion: 'Inicio de sesión', consulta: 'Consulta', creacion: 'Creación', actualizacion: 'Actualización', eliminacion: 'Eliminación',
+  asignacion: 'Asignación', cambio_rol: 'Cambio de rol', exportacion: 'Exportación', acceso_denegado: 'Acceso denegado',
+}
+/** hospitales.editar → Hospitales · editar */
+const permisoLabel = (p: string) => {
+  const [a, b] = p.split('.')
+  const t = a.replace(/_/g, ' ')
+  return `${t.charAt(0).toUpperCase()}${t.slice(1)}${b ? ` · ${b.replace(/_/g, ' ')}` : ''}`
+}
+const POR_PAGINA = 10
+
+type Perfil = {
+  id: string; rol: string | null; nombre: string; correo: string; telefono: string; hospital: string; estado: string
+  dosFA: boolean; ultimo: string | null; registrado: string
+}
+type RolPermiso = { rol: string; permiso: string }
+
+async function fetchPerfiles(): Promise<Perfil[]> {
+  const { data, error } = await supabase.from('profiles')
+    .select('id, rol, nombre_completo, correo, telefono, estado, dos_factores, ultimo_acceso, created_at, hospitales(nombre)')
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ((data ?? []) as any[]).map((p) => ({
+    id: p.id, rol: p.rol, nombre: p.nombre_completo || '—', correo: p.correo ?? '—', telefono: p.telefono ?? '—',
+    hospital: (Array.isArray(p.hospitales) ? p.hospitales[0]?.nombre : p.hospitales?.nombre) ?? '—',
+    estado: p.estado, dosFA: Boolean(p.dos_factores), ultimo: p.ultimo_acceso, registrado: fFecha(p.created_at),
+  }))
+}
+
+async function fetchRolPermisos(): Promise<RolPermiso[]> {
+  const { data, error } = await supabase.from('rol_permisos').select('rol, permiso')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as RolPermiso[]
+}
+
+async function fetchResumen() {
+  const [u, rp, h, c] = await Promise.all([
+    supabase.from('profiles').select('id', { count: 'exact', head: true }),
+    supabase.from('rol_permisos').select('rol'),
+    supabase.from('hospitales').select('id', { count: 'exact', head: true }).eq('estado', 'activo'),
+    supabase.from('configuracion').select('clave', { count: 'exact', head: true }),
+  ])
+  const err = u.error ?? rp.error ?? h.error ?? c.error
+  if (err) throw new Error(err.message)
+  const filas = (rp.data ?? []) as { rol: string }[]
+  return { usuarios: u.count ?? 0, roles: new Set(filas.map((r) => r.rol)).size, permisos: filas.length, hospitales: h.count ?? 0, config: c.count ?? 0 }
+}
+
+type Actividad = { accion: string; modulo: string; fecha: string }
+async function fetchActividadUsuario(userId: string | undefined): Promise<Actividad[]> {
+  if (!userId) return []
+  // La auditoría solo la ve el administrador; para otros roles llega vacía
+  const { data, error } = await supabase.from('auditoria').select('accion, modulo, created_at')
+    .eq('user_id', userId).order('created_at', { ascending: false }).limit(5)
+  if (error) return []
+  return ((data ?? []) as { accion: string; modulo: string; created_at: string }[])
+    .map((a) => ({ accion: ACCION_LABEL[a.accion] ?? a.accion, modulo: a.modulo, fecha: fFechaHora(a.created_at) }))
+}
+
+/** Fila de estado (cargando / error / vacío) para las tablas con datos reales */
+function FilaEstado({ cols, cargando, error, vacio, recargar }: { cols: number; cargando: boolean; error: string; vacio: string | null; recargar: () => void }) {
+  if (cargando) return <tr><td colSpan={cols} className="td py-8 text-center text-slate-400">Cargando…</td></tr>
+  if (error) return <tr><td colSpan={cols} className="td py-8 text-center text-red-600">No se pudieron cargar los datos: {error} <button onClick={recargar} className="ml-2 font-semibold text-brand-600 hover:underline">Reintentar</button></td></tr>
+  if (vacio) return <tr><td colSpan={cols} className="td py-8 text-center text-slate-400">{vacio}</td></tr>
+  return null
+}
+
+function Buscar({ value, onChange, placeholder, className }: { value: string; onChange: (v: string) => void; placeholder: string; className?: string }) {
+  return (
+    <label className={clsx('relative flex items-center', className)}>
+      <svg className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+      <input className="input pl-9" placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  )
+}
+
+const unicos = (xs: string[]) => [...new Set(xs.filter((x) => x && x !== '—'))].sort((a, b) => a.localeCompare(b, 'es'))
+const textoPaginacion = (pagina: number, total: number, nombre: string) =>
+  total === 0 ? `Mostrando 0 de 0 ${nombre}` : `Mostrando ${num((pagina - 1) * POR_PAGINA + 1)} a ${num(Math.min(pagina * POR_PAGINA, total))} de ${num(total)} ${nombre}`
+
+function UsuariosTabReal({ onNew, permisos }: { onNew: () => void; permisos: RolPermiso[] }) {
+  const { datos, cargando, error, recargar } = useDatos(fetchPerfiles, [] as Perfil[])
+  const [q, setQ] = useState('')
+  const [fRol, setFRol] = useState('Todos los roles')
+  const [fHosp, setFHosp] = useState('Todos los hospitales')
+  const [pagina, setPagina] = useState(1)
+  const [selId, setSelId] = useState<string | null>(null)
+  const [checked, setChecked] = useState<Record<string, boolean>>({})
+  const [subTab, setSubTab] = useState(0)
+
+  const t = q.trim().toLowerCase()
+  const lista = datos.filter((u) =>
+    (!t || [u.nombre, u.correo, rolLabel(u.rol)].some((x) => x.toLowerCase().includes(t)))
+    && (fRol === 'Todos los roles' || rolLabel(u.rol) === fRol)
+    && (fHosp === 'Todos los hospitales' || u.hospital === fHosp))
+  const totalPaginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA))
+  const pag = Math.min(pagina, totalPaginas)
+  const filas = lista.slice((pag - 1) * POR_PAGINA, pag * POR_PAGINA)
+  const u = datos.find((x) => x.id === selId) ?? filas[0]
+  const all = filas.length > 0 && filas.every((r) => checked[r.id])
+  const roles = unicos(datos.map((x) => rolLabel(x.rol)))
+  const hospitales = unicos(datos.map((x) => x.hospital))
+  const actividad = useDatos(() => fetchActividadUsuario(u?.id), [] as Actividad[], [u?.id])
+  const permisosRol = u?.rol ? permisos.filter((p) => p.rol === u.rol).map((p) => p.permiso).sort() : []
+  const filtro = (fn: (v: string) => void) => (v: string) => { fn(v); setPagina(1) }
+  const estado = (e: string) => { const s = ESTADO_CUENTA[e] ?? { t: e, tone: 'gray' as Tone }; return <Badge tone={s.tone} icon={s.tone === 'green'}>{s.t}</Badge> }
+
+  return (
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+      <Panel className="xl:col-span-8" bodyClass="!px-0 !pb-0"
+        title={<span className="flex items-center gap-3">Listado de usuarios <span className="rounded-md bg-brand-50 px-2 py-0.5 text-[12px] font-medium text-brand-700">{cargando ? '…' : num(lista.length)} registros</span></span>}
+        icon={Users}>
+        <div className="flex flex-wrap items-center gap-3 px-4 pb-3">
+          <Buscar value={q} onChange={filtro(setQ)} placeholder="Buscar por nombre, correo o rol..." className="w-full sm:w-[260px]" />
+          <Select key={`r${roles.length}`} options={['Todos los roles', ...roles]} onChange={filtro(setFRol)} className="w-full sm:w-[190px]" />
+          <Select key={`h${hospitales.length}`} options={['Todos los hospitales', ...hospitales]} onChange={filtro(setFHosp)} className="w-full sm:w-[190px]" />
+          <button onClick={onNew} className="btn-primary ml-auto"><Plus size={17} /> Nuevo usuario</button>
+        </div>
+        <Table className="px-2">
+          <thead>
+            <tr className="bg-[#f5f8fd]">
+              <th className="th w-8"><Checkbox checked={all} onChange={(v) => setChecked({ ...checked, ...Object.fromEntries(filas.map((r) => [r.id, v])) })} /></th>
+              {['#', 'Nombre completo', 'Correo electrónico', 'Rol', 'Hospital / Centro', 'Estado', 'Último acceso', 'Acciones'].map((h) => <th key={h} className="th text-brand-800">{h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            <FilaEstado cols={9} cargando={cargando} error={error} recargar={recargar}
+              vacio={datos.length === 0 ? 'Aún no hay usuarios registrados' : lista.length === 0 ? 'No se encontraron usuarios con los filtros seleccionados' : null} />
+            {!cargando && !error && filas.map((r, i) => (
+              <tr key={r.id} onClick={() => setSelId(r.id)} className={clsx('tr cursor-pointer', u?.id === r.id && '!bg-brand-50/80')}>
+                <td className="td" onClick={(e) => e.stopPropagation()}>
+                  <Checkbox checked={!!checked[r.id]} onChange={(v) => setChecked({ ...checked, [r.id]: v })} />
+                </td>
+                <td className="td">{(pag - 1) * POR_PAGINA + i + 1}</td>
+                <td className="td whitespace-nowrap text-ink">{r.nombre}</td>
+                <td className="td whitespace-nowrap text-ink">{r.correo}</td>
+                <td className="td"><span className={clsx('chip whitespace-nowrap px-2.5 py-1 text-[12px] font-medium', rolChip(r.rol))}>{rolLabel(r.rol)}</span></td>
+                <td className="td whitespace-nowrap">{r.hospital}</td>
+                <td className="td">{estado(r.estado)}</td>
+                <td className="td whitespace-nowrap leading-tight">{r.ultimo ? <>{fFechaHora(r.ultimo)}<br /><span className="text-[11.5px] text-slate-400">{hace(r.ultimo)}</span></> : <span className="text-slate-400">Nunca</span>}</td>
+                <td className="td" onClick={(e) => e.stopPropagation()}><DotsButton onClick={() => setSelId(r.id)} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+        <Pagination text={textoPaginacion(pag, lista.length, 'usuarios')} page={pag} onPage={setPagina} totalPages={totalPaginas} perPage={false} />
+      </Panel>
+
+      {/* Detalle */}
+      <Panel className="xl:col-span-4" title="Detalle del usuario" icon={User}>
+        {!u ? (
+          <div className="py-10 text-center text-[12.5px] text-slate-400">{cargando ? 'Cargando…' : datos.length ? 'Selecciona un usuario' : 'Sin registros'}</div>
+        ) : (
+          <>
+            <div className="flex items-start gap-4">
+              <UserSilhouette size={96} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="break-words text-[18px] font-bold text-ink">{u.nombre}</div>
+                  {estado(u.estado)}
+                </div>
+                <div className="mb-1.5 text-[13px] text-ink/80">{rolLabel(u.rol)}</div>
+                <ul className="space-y-0.5 text-[12px] text-brand-800/90">
+                  <li className="flex items-center gap-2 break-all"><Mail size={13} className="shrink-0" />{u.correo}</li>
+                  <li className="flex items-center gap-2"><Phone size={13} />{u.telefono}</li>
+                  <li className="flex items-center gap-2"><Building2 size={13} />{u.hospital}</li>
+                  <li className="flex items-center gap-2"><CalendarDays size={13} />Registrado: {u.registrado}</li>
+                </ul>
+              </div>
+            </div>
+            <Tabs tabs={['Información', 'Roles y permisos', 'Actividad reciente']} active={subTab} onChange={setSubTab} className="mb-2 mt-4" />
+            {subTab === 0 && (
+              <div>
+                <InfoRow label="Nombre completo">{u.nombre}</InfoRow>
+                <InfoRow label="Teléfono">{u.telefono}</InfoRow>
+                <InfoRow label="Correo electrónico">{u.correo}</InfoRow>
+                <InfoRow label="Rol">{rolLabel(u.rol)}</InfoRow>
+                <InfoRow label="Hospital / Centro">{u.hospital}</InfoRow>
+                <InfoRow label="Estado">{estado(u.estado)}</InfoRow>
+                <InfoRow label="Último acceso">{u.ultimo ? fFechaHora(u.ultimo) : 'Nunca'}</InfoRow>
+                <InfoRow label="Autenticación 2FA">{u.dosFA ? <Badge tone="green" icon>Activada</Badge> : <Badge tone="gray">Desactivada</Badge>}</InfoRow>
+              </div>
+            )}
+            {subTab === 1 && (
+              permisosRol.length === 0
+                ? <div className="py-6 text-center text-[12.5px] text-slate-400">{u.rol ? 'Este rol no tiene permisos asignados' : 'El usuario aún no tiene un rol asignado'}</div>
+                : (
+                  <ul className="space-y-2 text-[12.5px]">
+                    {permisosRol.map((p) => (
+                      <li key={p} className="flex items-center justify-between border-b border-[#eef2f8] pb-1.5">
+                        <span className="text-ink">{permisoLabel(p)}</span>
+                        <Badge tone="green" icon>Permitido</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                )
+            )}
+            {subTab === 2 && (
+              actividad.cargando ? <div className="py-6 text-center text-[12.5px] text-slate-400">Cargando…</div>
+                : actividad.datos.length === 0 ? <div className="py-6 text-center text-[12.5px] text-slate-400">Sin actividad registrada</div>
+                  : (
+                    <ul className="space-y-2.5 text-[12.5px]">
+                      {actividad.datos.map((a, k) => (
+                        <li key={k} className="flex items-start gap-2.5 border-b border-[#eef2f8] pb-2">
+                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand-600" />
+                          <span className="flex-1 text-ink">{a.accion} <span className="text-slate-400">· {a.modulo}</span></span>
+                          <span className="text-slate-500">{a.fecha}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+            )}
+          </>
+        )}
+      </Panel>
+    </div>
+  )
+}
+
+function RolesTabReal({ permisos, cargando, error, recargar }: { permisos: RolPermiso[]; cargando: boolean; error: string; recargar: () => void }) {
+  const presentes = new Set(permisos.map((p) => p.rol))
+  const roles = [...ORDEN_ROLES.filter((r) => presentes.has(r)), ...[...presentes].filter((r) => !ORDEN_ROLES.includes(r))]
+  const lista = [...new Set(permisos.map((p) => p.permiso))].sort()
+  const tiene = new Set(permisos.map((p) => `${p.rol}|${p.permiso}`))
+  return (
+    <Panel title="Matriz de roles y permisos" icon={Lock} subtitle="Permisos asignados a cada rol del sistema (solo lectura)" bodyClass="!px-0">
+      <Table className="px-2">
+        <thead>
+          <tr className="bg-[#f5f8fd]">
+            <th className="th">Permiso</th>
+            {roles.map((r) => <th key={r} className="th text-center"><span className={clsx('chip whitespace-nowrap px-2.5 py-1 text-[12px]', rolChip(r))}>{rolLabel(r)}</span></th>)}
+          </tr>
+        </thead>
+        <tbody>
+          <FilaEstado cols={roles.length + 1} cargando={cargando} error={error} recargar={recargar} vacio={lista.length === 0 ? 'Aún no hay permisos definidos' : null} />
+          {!cargando && !error && lista.map((p) => (
+            <tr key={p} className="tr">
+              <td className="td whitespace-nowrap font-medium text-ink">{permisoLabel(p)}</td>
+              {roles.map((r) => <td key={r} className="td text-center"><Checkbox checked={tiene.has(`${r}|${p}`)} /></td>)}
+            </tr>
+          ))}
+          {!cargando && !error && lista.length > 0 && (
+            <tr className="border-t border-[#e6edf8] bg-[#f9fbfe]">
+              <td className="td font-semibold text-ink">Total de permisos</td>
+              {roles.map((r) => <td key={r} className="td text-center font-semibold text-brand-700">{permisos.filter((p) => p.rol === r).length} / {lista.length}</td>)}
+            </tr>
+          )}
+        </tbody>
+      </Table>
+    </Panel>
+  )
+}
+
+type HospitalFila = { id: string; cod: string; nombre: string; prov: string; usuarios: number; estado: string }
+const ESTADO_HOSP: Record<string, { t: string; tone: Tone }> = {
+  activo: { t: 'Activo', tone: 'green' }, en_proceso: { t: 'En proceso', tone: 'orange' }, inactivo: { t: 'Inactivo', tone: 'gray' },
+}
+async function fetchHospitalesAdmin(): Promise<HospitalFila[]> {
+  const [h, p] = await Promise.all([
+    supabase.from('hospitales').select('id, codigo, sigla, nombre, estado, provincias(nombre)').order('codigo'),
+    supabase.from('profiles').select('hospital_id').not('hospital_id', 'is', null),
+  ])
+  if (h.error) throw new Error(h.error.message)
+  const cuenta = ((p.data ?? []) as { hospital_id: string }[]).reduce<Record<string, number>>((m, r) => ({ ...m, [r.hospital_id]: (m[r.hospital_id] ?? 0) + 1 }), {})
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ((h.data ?? []) as any[]).map((x) => ({
+    id: x.id, cod: x.sigla || x.codigo, nombre: x.nombre,
+    prov: (Array.isArray(x.provincias) ? x.provincias[0]?.nombre : x.provincias?.nombre) ?? '—', usuarios: cuenta[x.id] ?? 0, estado: x.estado,
+  }))
+}
+
+function HospitalesTabReal() {
+  const { datos, cargando, error, recargar } = useDatos(fetchHospitalesAdmin, [] as HospitalFila[])
+  const [q, setQ] = useState('')
+  const [fProv, setFProv] = useState('Todas las provincias')
+  const [fEst, setFEst] = useState('Todos los estados')
+  const [pagina, setPagina] = useState(1)
+  const t = q.trim().toLowerCase()
+  const lista = datos.filter((h) =>
+    (!t || h.nombre.toLowerCase().includes(t) || h.cod.toLowerCase().includes(t))
+    && (fProv === 'Todas las provincias' || h.prov === fProv)
+    && (fEst === 'Todos los estados' || (ESTADO_HOSP[h.estado]?.t ?? h.estado) === fEst))
+  const totalPaginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA))
+  const pag = Math.min(pagina, totalPaginas)
+  const filas = lista.slice((pag - 1) * POR_PAGINA, pag * POR_PAGINA)
+  const provincias = unicos(datos.map((h) => h.prov))
+  const filtro = (fn: (v: string) => void) => (v: string) => { fn(v); setPagina(1) }
+  return (
+    <Panel title={<span className="flex items-center gap-3">Hospitales registrados <span className="rounded-md bg-brand-50 px-2 py-0.5 text-[12px] font-medium text-brand-700">{cargando ? '…' : num(datos.length)} hospitales</span></span>}
+      icon={Hospital} action={<MoreLink boxed>Ir a Hospitales</MoreLink>} bodyClass="!px-0 !pb-0">
+      <div className="flex flex-wrap gap-3 px-4 pb-3">
+        <Buscar value={q} onChange={filtro(setQ)} placeholder="Buscar hospital por nombre o código..." className="w-full sm:w-[280px]" />
+        <Select key={provincias.length} options={['Todas las provincias', ...provincias]} onChange={filtro(setFProv)} className="w-full sm:w-[200px]" />
+        <Select options={['Todos los estados', 'Activo', 'En proceso', 'Inactivo']} onChange={filtro(setFEst)} className="w-full sm:w-[180px]" />
+      </div>
+      <Table className="px-2">
+        <thead>
+          <tr className="bg-[#f5f8fd]">{['Código', 'Hospital', 'Provincia', 'Usuarios', 'Estado', 'Acciones'].map((h) => <th key={h} className="th text-brand-800">{h}</th>)}</tr>
+        </thead>
+        <tbody>
+          <FilaEstado cols={6} cargando={cargando} error={error} recargar={recargar}
+            vacio={datos.length === 0 ? 'Aún no hay hospitales registrados' : lista.length === 0 ? 'No se encontraron hospitales con los filtros seleccionados' : null} />
+          {!cargando && !error && filas.map((h) => {
+            const s = ESTADO_HOSP[h.estado] ?? { t: h.estado, tone: 'gray' as Tone }
+            return (
+              <tr key={h.id} className="tr">
+                <td className="td font-semibold text-brand-700">{h.cod}</td>
+                <td className="td whitespace-nowrap text-ink">{h.nombre}</td>
+                <td className="td">{h.prov}</td>
+                <td className="td tabular-nums">{num(h.usuarios)}</td>
+                <td className="td"><Badge tone={s.tone} icon={s.tone === 'green'}>{s.t}</Badge></td>
+                <td className="td"><DotsButton /></td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </Table>
+      <Pagination text={textoPaginacion(pag, lista.length, 'hospitales')} page={pag} onPage={setPagina} totalPages={totalPaginas} perPage={false} />
+    </Panel>
+  )
+}
+
+/** En producción los usuarios del personal se crean en Supabase; aquí solo se explica el procedimiento */
+function NuevoUsuarioInfoModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Modal open={open} onClose={onClose} className="max-w-[560px]">
+      <div className="flex items-center gap-3 border-b border-[#eef2f8] px-6 py-4">
+        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-600 text-white"><UserPlus size={20} /></span>
+        <div>
+          <h2 className="text-[18px] font-bold text-ink">Nuevo usuario</h2>
+          <p className="text-[12.5px] text-slate-500">Cómo dar de alta a un usuario del personal</p>
+        </div>
+      </div>
+      <div className="space-y-3 px-6 py-5 text-[13px] text-ink/90">
+        <p>Por seguridad, las cuentas del personal (administradores, coordinadores y operadores) se crean directamente en Supabase y no desde esta pantalla.</p>
+        <ol className="list-decimal space-y-1.5 pl-5">
+          <li>En el panel de Supabase, abra <b>Authentication → Users</b> y pulse <b>Add user</b>.</li>
+          <li>Indique el correo electrónico y una contraseña temporal (o envíe una invitación).</li>
+          <li>El usuario aparecerá en este listado sin rol asignado.</li>
+          <li>Asígnele el rol y el hospital en la tabla <b>profiles</b> (columnas <code>rol</code> y <code>hospital_id</code>).</li>
+        </ol>
+        <p className="text-[12px] text-slate-500">Los radiólogos, médicos referidores y pacientes se registran por sus propios formularios y quedan pendientes de aprobación.</p>
+      </div>
+      <div className="flex justify-end border-t border-[#eef2f8] px-6 py-4">
+        <button className="btn-primary" onClick={onClose}>Entendido</button>
+      </div>
+    </Modal>
+  )
+}
+
 /* ---------- Página ---------- */
 export default function Administracion() {
   const [tab, setTab] = useState(0)
   const [exportOpen, setExportOpen] = useState(false)
   const [modal, setModal] = useState(false)
+  const resumen = useDatos(fetchResumen, { usuarios: 0, roles: 0, permisos: 0, hospitales: 0, config: 0 })
+  const permisos = useDatos(fetchRolPermisos, [] as RolPermiso[])
+  const r = resumen.datos
+  const v = (n: number) => (resumen.cargando ? '…' : num(n))
 
   return (
     <div>
@@ -365,24 +735,37 @@ export default function Administracion() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_0.97fr_1fr_1fr]">
-        <Kpi icon={User} tone="blue" value="842" label="Usuarios registrados" sub="6% vs. mes anterior" trend="up" />
-        <Kpi icon={Users} tone="blue" value="12" label="Roles de usuario" sub="78 permisos" />
-        <Kpi icon={Building2} tone="blue" value="128" label="Hospitales activos" sub="4 nuevos este mes" trend="up" />
-        <Kpi icon={Settings} tone="blue" value="6" label="Configuraciones del sistema" sub="Operativas" />
-      </div>
+      {supabaseConfigurado ? (
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_0.97fr_1fr_1fr]">
+          <Kpi icon={User} tone="blue" value={v(r.usuarios)} label="Usuarios registrados" sub={r.usuarios ? 'Cuentas en la plataforma' : 'Sin datos aún'} />
+          <Kpi icon={Users} tone="blue" value={v(r.roles)} label="Roles de usuario" sub={`${num(r.permisos)} permisos`} />
+          <Kpi icon={Building2} tone="blue" value={v(r.hospitales)} label="Hospitales activos" sub={r.hospitales ? 'Con estado activo' : 'Sin datos aún'} />
+          <Kpi icon={Settings} tone="blue" value={v(r.config)} label="Configuraciones del sistema" sub="Parámetros guardados" />
+        </div>
+      ) : (
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_0.97fr_1fr_1fr]">
+          <Kpi icon={User} tone="blue" value="842" label="Usuarios registrados" sub="6% vs. mes anterior" trend="up" />
+          <Kpi icon={Users} tone="blue" value="12" label="Roles de usuario" sub="78 permisos" />
+          <Kpi icon={Building2} tone="blue" value="128" label="Hospitales activos" sub="4 nuevos este mes" trend="up" />
+          <Kpi icon={Settings} tone="blue" value="6" label="Configuraciones del sistema" sub="Operativas" />
+        </div>
+      )}
 
       <div className="card mb-4 px-3">
         <Tabs size="md" active={tab} onChange={setTab} className="border-b-0"
           tabs={[{ label: 'Usuarios', icon: User }, { label: 'Roles y permisos', icon: Lock }, { label: 'Hospitales', icon: Building2 }, { label: 'Configuración general', icon: Settings }]} />
       </div>
 
-      {tab === 0 && <UsuariosTab onNew={() => setModal(true)} />}
-      {tab === 1 && <RolesTab />}
-      {tab === 2 && <HospitalesTab />}
+      {tab === 0 && (supabaseConfigurado ? <UsuariosTabReal onNew={() => setModal(true)} permisos={permisos.datos} /> : <UsuariosTab onNew={() => setModal(true)} />)}
+      {tab === 1 && (supabaseConfigurado
+        ? <RolesTabReal permisos={permisos.datos} cargando={permisos.cargando} error={permisos.error} recargar={permisos.recargar} />
+        : <RolesTab />)}
+      {tab === 2 && (supabaseConfigurado ? <HospitalesTabReal /> : <HospitalesTab />)}
       {tab === 3 && <ConfigTab />}
 
-      <NuevoUsuarioModal open={modal} onClose={() => setModal(false)} />
+      {supabaseConfigurado
+        ? <NuevoUsuarioInfoModal open={modal} onClose={() => setModal(false)} />
+        : <NuevoUsuarioModal open={modal} onClose={() => setModal(false)} />}
     </div>
   )
 }

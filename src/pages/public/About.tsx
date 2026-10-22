@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight, Building2, CheckCircle2, Database, Eye, Network, ShieldCheck, Target, Users } from 'lucide-react'
 import PublicLayout, { PageHero, SectionTitle } from '../../layouts/PublicLayout'
+import { useCifrasPublicas } from '../../lib/publico'
 
 const OBJETIVOS = [
   { icon: Database, t: 'Centralizar la información diagnóstica', d: 'Un repositorio nacional de imágenes e informes accesible desde cualquier hospital de la red.' },
@@ -17,6 +18,7 @@ const ETAPAS = [
 ]
 
 export default function About() {
+  const cifras = useCifrasPublicas()
   return (
     <PublicLayout>
       <PageHero eyebrow="SOBRE EL PROYECTO" title="Una red nacional para una salud más conectada"
@@ -55,7 +57,7 @@ export default function About() {
         <div>
           <SectionTitle>Alcance</SectionTitle>
           <div className="mt-6 grid grid-cols-2 gap-4">
-            {[[Building2, '128', 'Hospitales conectados'], [Target, '32', 'Provincias'], [Users, '+500', 'Radiólogos'], [Eye, '+2.1 M', 'Estudios al año']].map(([I, v, l]) => {
+            {[[Building2, cifras.hospitales, 'Hospitales conectados'], [Target, '32', 'Provincias'], [Users, cifras.radiologos, 'Radiólogos'], [Eye, cifras.estudios, 'Estudios al año']].map(([I, v, l]) => {
               const Icon = I as typeof Building2
               return <div key={l as string} className="card p-5"><Icon size={22} className="text-brand-600" /><div className="mt-2 text-[26px] font-bold">{v as string}</div><div className="text-[13px] text-ink/70">{l as string}</div></div>
             })}

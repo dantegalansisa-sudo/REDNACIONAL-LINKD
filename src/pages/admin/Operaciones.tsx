@@ -5,11 +5,12 @@ import {
 } from 'lucide-react'
 import { Badge, Bar, DotsButton, Kpi, MoreLink, PageHeader, Panel, Table, clsx, type Tone } from '../../components/ui'
 import { Bars } from '../../components/charts'
+import { supabaseConfigurado } from '../../lib/admin-data'
 
 /* ---------- Datos mock ---------- */
 type Estudio = { hora: string; paciente: string; hospital: string; mod: string; estado: string; tone: Tone; tiempo: string; dot: string }
 
-const ESTUDIOS: Record<string, Estudio[]> = {
+const MOCK_ESTUDIOS: Record<string, Estudio[]> = {
   'En proceso': [
     { hora: '10:24 a. m.', paciente: 'Juan Pérez', hospital: 'HPHM', mod: 'CT', estado: 'En lectura', tone: 'green', tiempo: '12 min', dot: '#16a34a' },
     { hora: '10:18 a. m.', paciente: 'María López', hospital: 'HGA', mod: 'RX', estado: 'Crítico', tone: 'red', tiempo: '28 min', dot: '#ef4444' },
@@ -39,11 +40,12 @@ const ESTUDIOS: Record<string, Estudio[]> = {
     { hora: '04:30 a. m.', paciente: 'Daniela Cruz', hospital: 'HRC', mod: 'RX', estado: 'Vencido', tone: 'red', tiempo: '6 h 06 min', dot: '#ef4444' },
   ],
 }
+const ESTUDIOS: Record<string, Estudio[]> = supabaseConfigurado ? {} : MOCK_ESTUDIOS
 const TABS = [
-  { label: 'En proceso', count: '2,148' },
-  { label: 'Críticos', count: '24' },
-  { label: 'Sin asignar', count: '186' },
-  { label: 'Vencidos', count: '312' },
+  { label: 'En proceso', count: supabaseConfigurado ? '0' : '2,148' },
+  { label: 'Críticos', count: supabaseConfigurado ? '0' : '24' },
+  { label: 'Sin asignar', count: supabaseConfigurado ? '0' : '186' },
+  { label: 'Vencidos', count: supabaseConfigurado ? '0' : '312' },
 ]
 
 const sistemas: { name: string; icon: LucideIcon; ok: boolean }[] = [
@@ -55,7 +57,7 @@ const sistemas: { name: string; icon: LucideIcon; ok: boolean }[] = [
   { name: 'Red y comunicaciones', icon: Wifi, ok: true },
 ]
 
-const respuesta = [
+const MOCK_RESPUESTA = [
   { label: 'Tomografía (CT)', value: 48, max: 60, txt: '48 min', obj: 'Objetivo < 60 min', color: '#2f6bff' },
   { label: 'Resonancia (RM)', value: 65, max: 120, txt: '1 h 05 min', obj: 'Objetivo < 2 h', color: '#22b07d' },
   { label: 'Rayos X (RX)', value: 28, max: 120, txt: '28 min', obj: 'Objetivo < 30 min', color: '#f59e0b' },
@@ -63,39 +65,54 @@ const respuesta = [
   { label: 'Mamografía (MG)', value: 110, max: 110, txt: '1 h 50 min', obj: 'Objetivo < 24 h', color: '#8b5cf6' },
 ]
 
+const respuesta = supabaseConfigurado
+  ? MOCK_RESPUESTA.map((r) => ({ ...r, value: 0, txt: '—' }))
+  : MOCK_RESPUESTA
+
 const horas = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
 const recibidos = [70, 55, 40, 32, 48, 60, 75, 110, 170, 200, 215, 190, 205, 220, 195, 230, 240, 210, 200, 185, 160, 140, 120, 95]
 const completados = [35, 30, 20, 18, 25, 30, 38, 55, 85, 100, 108, 95, 100, 110, 98, 115, 120, 105, 98, 92, 80, 70, 60, 48]
 const criticos = [10, 8, 6, 5, 7, 9, 12, 15, 22, 25, 28, 24, 26, 30, 27, 31, 33, 29, 26, 24, 20, 18, 15, 12]
 
-const topHospitales: [string, string, string, boolean][] = [
+const MOCK_TOP_HOSPITALES: [string, string, string, boolean][] = [
   ['HPHM - Hosp. Hugo Mendoza', '133,098', '512', true],
   ['HRA - Hosp. Dr. Fco. A. Gonzalvo', '86,644', '333', true],
   ['HJM - Hosp. Juan de Herrera', '56,760', '218', true],
   ['HRC - Hosp. Municipal Constanza', '18,020', '69', false],
   ['HGA - Hosp. Municipal La Vega', '9,148', '35', true],
 ]
-const topProvincias = [
+const MOCK_TOP_PROVINCIAS = [
   ['La Vega', '229,559', '21.2%'],
   ['Santiago', '198,762', '18.3%'],
   ['Santo Domingo', '120,558', '11.1%'],
   ['Sánchez Ramírez', '72,239', '6.7%'],
   ['Monseñor Nouel', '62,118', '5.7%'],
 ]
-const alertas: { hora: string; tipo: string; tone: Tone; msg: string }[] = [
+const MOCK_ALERTAS: { hora: string; tipo: string; tone: Tone; msg: string }[] = [
   { hora: '10:15 a. m.', tipo: 'Crítico', tone: 'red', msg: 'Estudio CT sin acuse de recepción - HPHM' },
   { hora: '09:42 a. m.', tipo: 'Incidencia', tone: 'red', msg: 'Error de envío HL7 - HRC' },
   { hora: '09:18 a. m.', tipo: 'Sistema', tone: 'red', msg: 'Hospital HJM sin conexión' },
   { hora: '08:55 a. m.', tipo: 'SLA', tone: 'orange', msg: 'Estudio RM próximo a vencer - HRA' },
   { hora: '08:22 a. m.', tipo: 'Info', tone: 'blue', msg: 'Nuevo hospital conectado - Hospital de Constanza' },
 ]
+const topHospitales = supabaseConfigurado ? [] : MOCK_TOP_HOSPITALES
+const topProvincias = supabaseConfigurado ? [] : MOCK_TOP_PROVINCIAS
+const alertas = supabaseConfigurado ? [] : MOCK_ALERTAS
+
+const RESUMEN = supabaseConfigurado
+  ? { total: '0', operativos: ['0', '—'], incidencias: ['0', '—'], sinConexion: ['0', '—'] }
+  : { total: '128', operativos: ['102', '79.7%'], incidencias: ['18', '14.1%'], sinConexion: ['8', '6.2%'] }
+
+function FilaVacia({ colSpan, texto }: { colSpan: number; texto: string }) {
+  return <tr><td colSpan={colSpan} className="td py-6 text-center text-slate-400">{texto}</td></tr>
+}
 
 /* ---------- Página ---------- */
 export default function Operaciones() {
   const [tab, setTab] = useState(0)
   const [exportOpen, setExportOpen] = useState(false)
   const [zoom, setZoom] = useState(1)
-  const rows = ESTUDIOS[TABS[tab].label]
+  const rows = ESTUDIOS[TABS[tab].label] ?? []
 
   return (
     <div>
@@ -121,11 +138,23 @@ export default function Operaciones() {
 
       {/* KPIs */}
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <Kpi icon={Hospital} tone="blue" value="128" label="Hospitales conectados" sub="6 nuevos este mes" trend="up" />
-        <Kpi icon={FileText} tone="blue" value="2,148" label="Estudios en proceso" sub="18% vs. ayer" trend="down" />
-        <Kpi icon={AlertTriangle} tone="red" value="24" label="Estudios críticos" sub="11 sin acuse (≤ 15 min)" trend="up" trendTone="bad" />
-        <Kpi icon={Clock} tone="blue" value="1 h 26 min" label="Tiempo promedio de reporte" sub="22% vs. mes anterior" trend="down" />
-        <Kpi icon={UserRound} tone="blue" value="142" label="Radiólogos activos" sub="78% de disponibilidad" />
+        {supabaseConfigurado ? (
+          <>
+            <Kpi icon={Hospital} tone="blue" value="0" label="Hospitales conectados" sub="Sin datos aún" />
+            <Kpi icon={FileText} tone="blue" value="0" label="Estudios en proceso" sub="Sin datos aún" />
+            <Kpi icon={AlertTriangle} tone="red" value="0" label="Estudios críticos" sub="Sin datos aún" />
+            <Kpi icon={Clock} tone="blue" value="—" label="Tiempo promedio de reporte" sub="Sin datos aún" />
+            <Kpi icon={UserRound} tone="blue" value="0" label="Radiólogos activos" sub="Sin datos aún" />
+          </>
+        ) : (
+          <>
+            <Kpi icon={Hospital} tone="blue" value="128" label="Hospitales conectados" sub="6 nuevos este mes" trend="up" />
+            <Kpi icon={FileText} tone="blue" value="2,148" label="Estudios en proceso" sub="18% vs. ayer" trend="down" />
+            <Kpi icon={AlertTriangle} tone="red" value="24" label="Estudios críticos" sub="11 sin acuse (≤ 15 min)" trend="up" trendTone="bad" />
+            <Kpi icon={Clock} tone="blue" value="1 h 26 min" label="Tiempo promedio de reporte" sub="22% vs. mes anterior" trend="down" />
+            <Kpi icon={UserRound} tone="blue" value="142" label="Radiólogos activos" sub="78% de disponibilidad" />
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-12">
@@ -141,18 +170,18 @@ export default function Operaciones() {
                 <button className="border-t border-[#d7e1f2] p-1.5 hover:bg-brand-50" onClick={() => setZoom(Math.max(1, zoom - 0.2))} aria-label="Alejar"><Minus size={15} /></button>
               </div>
               <ul className="absolute right-2 top-2 space-y-1 rounded-md bg-white/90 px-2.5 py-2 text-[12px] text-ink shadow-sm">
-                <li className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />Operativo (102)</li>
-                <li className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />Con incidencias (18)</li>
-                <li className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-red-500" />Sin conexión (8)</li>
+                <li className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />Operativo ({RESUMEN.operativos[0]})</li>
+                <li className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />Con incidencias ({RESUMEN.incidencias[0]})</li>
+                <li className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-red-500" />Sin conexión ({RESUMEN.sinConexion[0]})</li>
               </ul>
             </div>
             <div className="rounded-lg border border-[#e6edf8] p-3">
-              <div className="text-[20px] font-bold leading-tight text-ink">128</div>
+              <div className="text-[20px] font-bold leading-tight text-ink">{RESUMEN.total}</div>
               <div className="mb-3 text-[12px] text-ink/80">Total hospitales</div>
               {[
-                { n: '102', l: 'Operativos', p: '79.7%', c: 'bg-emerald-600' },
-                { n: '18', l: 'Con incidencias', p: '14.1%', c: 'bg-amber-500' },
-                { n: '8', l: 'Sin conexión', p: '6.2%', c: 'bg-red-500' },
+                { n: RESUMEN.operativos[0], l: 'Operativos', p: RESUMEN.operativos[1], c: 'bg-emerald-600' },
+                { n: RESUMEN.incidencias[0], l: 'Con incidencias', p: RESUMEN.incidencias[1], c: 'bg-amber-500' },
+                { n: RESUMEN.sinConexion[0], l: 'Sin conexión', p: RESUMEN.sinConexion[1], c: 'bg-red-500' },
               ].map((s) => (
                 <div key={s.l} className="flex gap-2.5 border-t border-[#eef2f8] py-2.5">
                   <span className={clsx('mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white', s.c)}><Hospital size={11} /></span>
@@ -200,6 +229,7 @@ export default function Operaciones() {
                   <td className="td"><DotsButton /></td>
                 </tr>
               ))}
+              {rows.length === 0 && <FilaVacia colSpan={8} texto="Aún no hay estudios registrados" />}
             </tbody>
           </Table>
           <div className="flex justify-end px-4 py-3"><MoreLink boxed>Ver todos los estudios</MoreLink></div>
@@ -210,9 +240,9 @@ export default function Operaciones() {
           <ul className="divide-y divide-[#eef2f8]">
             {sistemas.map((s) => (
               <li key={s.name} className="flex items-center gap-3 py-1.5 text-[12.5px]">
-                <span className={clsx('flex h-5 w-5 items-center justify-center rounded', s.ok ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-500')}><s.icon size={12} /></span>
+                <span className={clsx('flex h-5 w-5 items-center justify-center rounded', supabaseConfigurado ? 'bg-slate-100 text-slate-400' : s.ok ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-500')}><s.icon size={12} /></span>
                 <span className="flex-1 text-ink">{s.name}</span>
-                <span className="w-[140px]">{s.ok ? <Badge tone="green" icon>Operativo</Badge> : <Badge tone="orange">Con incidencias</Badge>}</span>
+                <span className="w-[140px]">{supabaseConfigurado ? <Badge tone="gray">Sin datos</Badge> : s.ok ? <Badge tone="green" icon>Operativo</Badge> : <Badge tone="orange">Con incidencias</Badge>}</span>
               </li>
             ))}
           </ul>
@@ -239,7 +269,9 @@ export default function Operaciones() {
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#22b07d]" />Informes completados</span>
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#ef4444]" />Críticos</span>
           </div>
-          <Bars
+          {supabaseConfigurado ? (
+            <div className="flex min-h-[150px] items-center justify-center text-[12.5px] text-slate-400">Sin datos para mostrar</div>
+          ) : <Bars
             labels={horas.map((h, i) => (i % 2 === 0 ? h : ''))}
             height={150}
             max={300}
@@ -250,7 +282,7 @@ export default function Operaciones() {
               { name: 'Informes completados', color: '#22b07d', values: completados },
               { name: 'Críticos', color: '#ef4444', values: criticos },
             ]}
-          />
+          />}
         </Panel>
 
         {/* Top hospitales */}
@@ -267,6 +299,7 @@ export default function Operaciones() {
                   <td className="td py-1.5">{h[3] ? <Badge tone="green" icon>Operativo</Badge> : <Badge tone="orange">Con incidencias</Badge>}</td>
                 </tr>
               ))}
+              {topHospitales.length === 0 && <FilaVacia colSpan={5} texto="Aún no hay hospitales con estudios" />}
             </tbody>
           </Table>
         </Panel>
@@ -284,6 +317,7 @@ export default function Operaciones() {
                   <td className="td py-1.5 text-right tabular-nums text-ink">{p[2]}</td>
                 </tr>
               ))}
+              {topProvincias.length === 0 && <FilaVacia colSpan={4} texto="Aún no hay estudios por provincia" />}
             </tbody>
           </Table>
         </Panel>
@@ -300,6 +334,7 @@ export default function Operaciones() {
                   <td className={clsx('td py-1.5', a.tone === 'red' ? 'text-red-600' : a.tone === 'orange' ? 'text-orange-600' : 'text-brand-700')}>{a.msg}</td>
                 </tr>
               ))}
+              {alertas.length === 0 && <FilaVacia colSpan={3} texto="Aún no hay alertas registradas" />}
             </tbody>
           </Table>
         </Panel>

@@ -7,7 +7,11 @@ import {
 import {
   Badge, IconCircle, Kpi, Modality, PageHeader, Pagination, Panel, Select, Table, Tabs, clsx, type Tone,
 } from '../../components/ui'
+import { supabaseConfigurado } from '../../lib/admin-data'
 import { ConvocatoriaWizard } from './ConvocatoriaWizard'
+
+/** En producción (Supabase configurado) la pantalla arranca vacía, sin datos de ejemplo */
+const VACIO = supabaseConfigurado
 
 /* ---------------- Datos mock ---------------- */
 type Estado = 'Activa' | 'En evaluación' | 'Cerrada' | 'En pausa' | 'Cancelada'
@@ -22,7 +26,7 @@ const ESP_NOMBRE: Record<string, string> = {
   CT: 'Tomografía Computarizada', MR: 'Resonancia Magnética', US: 'Ultrasonido', RX: 'Radiografía Convencional', MG: 'Mamografía',
 }
 
-const CONVS: Conv[] = [
+const MOCK_CONVS: Conv[] = [
   { id: 1, titulo: 'Radiólogo para Tomografía', hospital: 'Hospital Pediátrico Hugo Mendoza', hospitalLines: ['Hospital Pediátrico', 'Hugo Mendoza'], esp: ['CT'], region: 'Sur', inicio: '01/03/2025', limite: '20/03/2025', postulaciones: 12, estado: 'Activa', icon: Building2, iconColor: 'text-violet-600', provincia: 'Santo Domingo, DN', descripcion: 'Se requiere médico radiólogo con experiencia en tomografía para cubrir la lectura de estudios en el Hospital Pediátrico Hugo Mendoza. Modalidad teleradiología. Turnos rotativos.', aplicaA: 'Todos los médicos radiólogos', criterios: ['Experiencia mínima de 2 años', 'Disponibilidad inmediata'], rating: 4.6 },
   { id: 2, titulo: 'Radiólogos para área de Ultrasonido', hospital: 'Hospital Dr. Marcelino Vélez', hospitalLines: ['Hospital Dr. Marcelino', 'Vélez'], esp: ['US'], region: 'Este', inicio: '05/03/2025', limite: '25/03/2025', postulaciones: 8, estado: 'En evaluación', icon: CheckCircle2, iconColor: 'text-emerald-600', provincia: 'Santo Domingo Oeste', descripcion: 'Se requieren médicos radiólogos con experiencia en ultrasonido general y obstétrico para cubrir turnos en el área de imágenes.', aplicaA: 'Solo médicos sin hospitales asignados', criterios: ['Experiencia mínima de 1 año', 'Certificación en ultrasonido'], rating: 4.4 },
   { id: 3, titulo: 'Resonancia Magnética', hospital: 'Hospital Regional Taiwán 19 de Marzo', hospitalLines: ['Hospital Regional', 'Taiwán 19 de Marzo'], esp: ['MR'], region: 'Norte', inicio: '20/02/2025', limite: '10/03/2025', postulaciones: 22, estado: 'Cerrada', icon: MapPin, iconColor: 'text-orange-500', provincia: 'Azua', descripcion: 'Lectura remota de estudios de resonancia magnética de neuro y musculoesquelético.', aplicaA: 'Todos los médicos radiólogos', criterios: ['Experiencia mínima de 3 años'], rating: 4.7 },
@@ -34,6 +38,10 @@ const CONVS: Conv[] = [
   { id: 9, titulo: 'Mamografía Diagnóstica', hospital: 'Instituto Nacional del Cáncer Rosa Emilia S.', hospitalLines: ['Instituto Nacional', 'del Cáncer Rosa Emilia S.'], esp: ['MG'], region: 'Todos', inicio: '01/03/2025', limite: '20/03/2025', postulaciones: 9, estado: 'Activa', icon: Crosshair, iconColor: 'text-red-500', provincia: 'Santo Domingo, DN', descripcion: 'Lectura de mamografías de tamizaje y diagnósticas con reporte BI-RADS.', aplicaA: 'Todos los médicos radiólogos', criterios: ['Experiencia en mamografía', 'Disponibilidad inmediata'], rating: 4.5 },
   { id: 10, titulo: 'Tomografía y Resonancia', hospital: 'Hospital Regional Antonio Musa', hospitalLines: ['Hospital Regional', 'Antonio Musa'], esp: ['CT', 'MR'], region: 'Norte', inicio: '10/03/2025', limite: '05/04/2025', postulaciones: 7, estado: 'En evaluación', icon: Megaphone, iconColor: 'text-emerald-600', provincia: 'San Pedro de Macorís', descripcion: 'Cobertura de lectura de tomografía y resonancia para el servicio de emergencias.', aplicaA: 'Todos los médicos radiólogos', criterios: ['Experiencia mínima de 2 años'], rating: 4.4 },
 ]
+
+const CONVS: Conv[] = VACIO ? [] : MOCK_CONVS
+/** Total mostrado en el listado (el demo simula 18 convocatorias) */
+const TOTAL_CONVS = VACIO ? 0 : 18
 
 const ESTADO_STYLE: Record<Estado, { tone: Tone; cls: string; icon: LucideIcon }> = {
   'Activa': { tone: 'green', cls: 'bg-emerald-50 text-emerald-700', icon: CheckCircle2 },
@@ -56,7 +64,7 @@ function EstadoPill({ estado, className }: { estado: Estado; className?: string 
   )
 }
 
-const APLICANTES = [
+const MOCK_APLICANTES = [
   { n: 'Dra. María López', esp: 'Neurorradiología', exp: '8 años', rating: 4.9, hosp: 0, estado: 'Preseleccionado' },
   { n: 'Dr. Carlos Méndez', esp: 'Radiología General', exp: '6 años', rating: 4.8, hosp: 1, estado: 'En revisión' },
   { n: 'Dra. Ana Rodríguez', esp: 'Imagenología', exp: '5 años', rating: 4.7, hosp: 0, estado: 'En revisión' },
@@ -65,11 +73,13 @@ const APLICANTES = [
   { n: 'Dr. Miguel Santos', esp: 'Abdominal', exp: '7 años', rating: 4.5, hosp: 0, estado: 'Nuevo' },
 ]
 
+const APLICANTES = VACIO ? [] : MOCK_APLICANTES
+
 /* ---------------- Página ---------------- */
 export default function Convocatorias() {
   const [params, setParams] = useSearchParams()
   const [wizard, setWizard] = useState(params.get('nueva') === '1')
-  const [sel, setSel] = useState(1)
+  const [sel, setSel] = useState(CONVS[0]?.id ?? 0)
   const [tab, setTab] = useState(0)
   const [q, setQ] = useState('')
   const [fEstado, setFEstado] = useState('Todos')
@@ -85,8 +95,8 @@ export default function Convocatorias() {
       && (fRegion === 'Todas' || c.region === fRegion)
   }), [q, fEstado, fEsp, fRegion, estados])
 
-  const conv = CONVS.find((c) => c.id === sel) ?? CONVS[0]
-  const estado = estados[conv.id] ?? conv.estado
+  const conv: Conv | undefined = CONVS.find((c) => c.id === sel) ?? CONVS[0]
+  const estado: Estado = conv ? estados[conv.id] ?? conv.estado : 'Activa'
 
   const closeWizard = () => {
     setWizard(false)
@@ -104,12 +114,25 @@ export default function Convocatorias() {
 
       {/* KPIs */}
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-        <Kpi icon={Megaphone} tone="blue" value="18" label="Convocatorias totales" sub={<><b className="font-medium">25%</b><span className="text-slate-500"> vs. mes anterior</span></>} trend="up" />
-        <Kpi icon={CircleCheck} tone="green" value="7" label="Activas" sub="38.9% del total" />
-        <Kpi icon={Clock} tone="orange" value="4" label="En evaluación" sub="22.2% del total" />
-        <Kpi icon={Pause} tone="yellow" value="3" label="En pausa" sub="16.7% del total" />
-        <Kpi icon={CircleCheck} tone="gray" value="3" label="Cerradas" sub="16.7% del total" />
-        <Kpi icon={X} tone="red" value="1" label="Cancelada" sub="5.6% del total" />
+        {VACIO ? (
+          <>
+            <Kpi icon={Megaphone} tone="blue" value="0" label="Convocatorias totales" sub="Sin datos aún" />
+            <Kpi icon={CircleCheck} tone="green" value="0" label="Activas" sub="Sin datos aún" />
+            <Kpi icon={Clock} tone="orange" value="0" label="En evaluación" sub="Sin datos aún" />
+            <Kpi icon={Pause} tone="yellow" value="0" label="En pausa" sub="Sin datos aún" />
+            <Kpi icon={CircleCheck} tone="gray" value="0" label="Cerradas" sub="Sin datos aún" />
+            <Kpi icon={X} tone="red" value="0" label="Canceladas" sub="Sin datos aún" />
+          </>
+        ) : (
+          <>
+            <Kpi icon={Megaphone} tone="blue" value="18" label="Convocatorias totales" sub={<><b className="font-medium">25%</b><span className="text-slate-500"> vs. mes anterior</span></>} trend="up" />
+            <Kpi icon={CircleCheck} tone="green" value="7" label="Activas" sub="38.9% del total" />
+            <Kpi icon={Clock} tone="orange" value="4" label="En evaluación" sub="22.2% del total" />
+            <Kpi icon={Pause} tone="yellow" value="3" label="En pausa" sub="16.7% del total" />
+            <Kpi icon={CircleCheck} tone="gray" value="3" label="Cerradas" sub="16.7% del total" />
+            <Kpi icon={X} tone="red" value="1" label="Cancelada" sub="5.6% del total" />
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
@@ -119,7 +142,7 @@ export default function Convocatorias() {
             <Clock size={30} className="mt-0.5 shrink-0 text-brand-600" />
             <div>
               <h3 className="text-[16px] font-bold text-ink">Listado de convocatorias</h3>
-              <p className="text-[12px] text-slate-500">{list.length === CONVS.length ? 18 : list.length} convocatorias encontradas</p>
+              <p className="text-[12px] text-slate-500">{list.length === CONVS.length ? TOTAL_CONVS : list.length} convocatorias encontradas</p>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-2.5 px-4 pb-3 pt-2 sm:grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr] lg:items-end">
@@ -167,14 +190,22 @@ export default function Convocatorias() {
                   </tr>
                 )
               })}
-              {list.length === 0 && <tr><td colSpan={10} className="td py-8 text-center">No se encontraron convocatorias con los filtros seleccionados.</td></tr>}
+              {list.length === 0 && <tr><td colSpan={10} className="td py-8 text-center text-slate-400">{VACIO ? 'Aún no hay convocatorias registradas' : 'No se encontraron convocatorias con los filtros seleccionados.'}</td></tr>}
             </tbody>
           </Table>
-          <Pagination text={`Mostrando 1 a ${Math.min(10, list.length)} de ${list.length === CONVS.length ? 18 : list.length} convocatorias`} pages={[1, 2]} />
+          {VACIO
+            ? <Pagination text="Mostrando 0 de 0 convocatorias" page={1} totalPages={1} />
+            : <Pagination text={`Mostrando 1 a ${Math.min(10, list.length)} de ${list.length === CONVS.length ? TOTAL_CONVS : list.length} convocatorias`} pages={[1, 2]} />}
         </section>
 
         {/* Detalle */}
         <section className="card min-w-0 xl:col-span-5">
+          {!conv ? (
+            <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 px-4 py-10 text-center text-[12.5px] text-slate-400">
+              <Hospital size={28} className="text-slate-300" />
+              Sin registros. Crea una convocatoria para ver aquí su detalle.
+            </div>
+          ) : (<>
           <div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-4">
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><Hospital size={24} /></span>
@@ -207,6 +238,7 @@ export default function Convocatorias() {
             {tab === 3 && <Comunicaciones conv={conv} />}
             {tab === 4 && <Historial conv={conv} />}
           </div>
+          </>)}
         </section>
       </div>
 

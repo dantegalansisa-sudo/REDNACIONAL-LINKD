@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { Bar, IconCircle, Kpi, MoreLink, PageHeader, Panel, Select, Table, clsx, type Tone } from '../../components/ui'
 import { Donut } from '../../components/charts'
+import { supabaseConfigurado } from '../../lib/admin-data'
 
 /* ---------- Datos mock ---------- */
 const PERIODOS = ['Últimos 12 meses', 'Últimos 6 meses', 'Últimos 3 meses', 'Año 2025', 'Año 2024']
@@ -54,21 +55,21 @@ const imgProvincia = [
   { label: 'Otras provincias', value: 95228 },
 ]
 
-const topProvincias = [
+const MOCK_TOP_PROVINCIAS = [
   ['La Vega', '229,559', '21.2%'],
   ['Santiago', '205,341', '18.9%'],
   ['Santo Domingo', '198,762', '18.3%'],
   ['Duarte', '120,558', '11.1%'],
   ['Sánchez Ramírez', '72,239', '6.7%'],
 ]
-const topRadiologia = [
+const MOCK_TOP_RADIOLOGIA = [
   ['La Vega', '86,644', '333'],
   ['Santiago', '56,760', '218'],
   ['Constanza', '18,020', '69'],
   ['Jarabacoa', '19,088', '73'],
   ['Cotuí', '17,153', '66'],
 ]
-const topCardiologia = [
+const MOCK_TOP_CARDIOLOGIA = [
   ['La Vega', '67,573', '260'],
   ['Santiago', '43,989', '169'],
   ['Constanza', '9,148', '35'],
@@ -76,7 +77,19 @@ const topCardiologia = [
   ['Cotuí', '8,708', '29'],
 ]
 
+const topProvincias = supabaseConfigurado ? [] : MOCK_TOP_PROVINCIAS
+const topRadiologia = supabaseConfigurado ? [] : MOCK_TOP_RADIOLOGIA
+const topCardiologia = supabaseConfigurado ? [] : MOCK_TOP_CARDIOLOGIA
+
 const fmt = (n: number) => n.toLocaleString('en-US')
+
+const SIN_DATOS = 'Disponible al integrar los datos'
+/** En producción (Supabase) las cifras de referencia se ocultan hasta integrar los datos reales */
+const v = (mock: string) => (supabaseConfigurado ? '—' : mock)
+
+function Vacio({ className }: { className?: string }) {
+  return <div className={clsx('flex min-h-[150px] items-center justify-center text-center text-[12.5px] text-slate-400', className)}>{SIN_DATOS}</div>
+}
 
 /* ---------- Subcomponentes ---------- */
 function HBarList({ rows, max, pct }: { rows: { label: string; value: number; pct?: string }[]; max: number; pct?: boolean }) {
@@ -124,6 +137,7 @@ function TopTable({ head, rows }: { head: string[]; rows: string[][] }) {
             {r.map((c, j) => <td key={j} className={clsx('td py-1.5 text-ink', j > 0 && 'text-right tabular-nums')}>{c}</td>)}
           </tr>
         ))}
+        {rows.length === 0 && <tr><td colSpan={head.length + 1} className="td py-6 text-center text-slate-400">{SIN_DATOS}</td></tr>}
       </tbody>
     </Table>
   )
@@ -182,20 +196,33 @@ export default function Analitica() {
 
       {/* KPIs */}
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[1.25fr_1fr_1.25fr_1.1fr_1.3fr]">
-        <Kpi icon={Users} tone="blue" value="10,847,910" label="Población total estimada" sub="2.3% vs. año anterior" trend="up" />
-        <Kpi icon={Target} tone="blue" value="1,258,355" label="Objetivo Diabetes (11.6%)" />
-        <Kpi icon={Target} tone="blue" value="3,568,412" label="Objetivo Hipertensión (33%)" />
-        <Kpi icon={Scan} tone="orange" value="4,826,767" label="Objetivo Día + Hiper" />
-        <Kpi icon={Building2} tone="orange" value="1,448,030" label="Objetivo Tele diagnóstico (30%)" />
+        {supabaseConfigurado ? (
+          <>
+            <Kpi icon={Users} tone="blue" value="—" label="Población total estimada" sub={SIN_DATOS} />
+            <Kpi icon={Target} tone="blue" value="—" label="Objetivo Diabetes" sub={SIN_DATOS} />
+            <Kpi icon={Target} tone="blue" value="—" label="Objetivo Hipertensión" sub={SIN_DATOS} />
+            <Kpi icon={Scan} tone="orange" value="—" label="Objetivo Día + Hiper" sub={SIN_DATOS} />
+            <Kpi icon={Building2} tone="orange" value="—" label="Objetivo Tele diagnóstico" sub={SIN_DATOS} />
+          </>
+        ) : (
+          <>
+            <Kpi icon={Users} tone="blue" value="10,847,910" label="Población total estimada" sub="2.3% vs. año anterior" trend="up" />
+            <Kpi icon={Target} tone="blue" value="1,258,355" label="Objetivo Diabetes (11.6%)" />
+            <Kpi icon={Target} tone="blue" value="3,568,412" label="Objetivo Hipertensión (33%)" />
+            <Kpi icon={Scan} tone="orange" value="4,826,767" label="Objetivo Día + Hiper" />
+            <Kpi icon={Building2} tone="orange" value="1,448,030" label="Objetivo Tele diagnóstico (30%)" />
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-12">
         {/* Fila 1 */}
         <Panel className="xl:col-span-4" title="Población por región" icon={BarChart3} action={<MoreLink boxed />}>
-          <HBarList rows={poblacionRegion} max={442369 * 1.05} pct />
+          {supabaseConfigurado ? <Vacio /> : <HBarList rows={poblacionRegion} max={442369 * 1.05} pct />}
         </Panel>
 
         <Panel className="xl:col-span-4" title="Población objetivo por condición" icon={Target} action={<MoreLink boxed />}>
+          {supabaseConfigurado ? <Vacio /> : (
           <div className="flex flex-col items-center gap-4 sm:flex-row">
             <Donut
               data={condiciones}
@@ -213,9 +240,11 @@ export default function Analitica() {
               ))}
             </ul>
           </div>
+          )}
         </Panel>
 
         <Panel className="lg:col-span-2 xl:col-span-4" title="Estudios por modalidad (1 diagnóstico por año)" icon={Stethoscope} action={<MoreLink boxed />}>
+          {supabaseConfigurado ? <Vacio /> : (
           <ul className="space-y-3">
             {modalidades.map((m) => (
               <li key={m.label} className="grid grid-cols-[auto_minmax(100px,1fr)_minmax(60px,1.4fr)_auto] items-center gap-3 text-[12.5px]">
@@ -226,27 +255,29 @@ export default function Analitica() {
               </li>
             ))}
           </ul>
+          )}
         </Panel>
 
         {/* Fila 2 */}
         <Panel className="xl:col-span-4" title="Total de imágenes por año" icon={Scan} action={<MoreLink boxed />}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <MiniStat icon={Scan} tone="blue" value="220,904" label="Imágenes de Radiología (1 diagnóstico por año)" />
-            <MiniStat icon={HeartPulse} tone="red" value="112,151" label="Imágenes de Cardiología (1 diagnóstico por año)" />
+            <MiniStat icon={Scan} tone="blue" value={v('220,904')} label="Imágenes de Radiología (1 diagnóstico por año)" />
+            <MiniStat icon={HeartPulse} tone="red" value={v('112,151')} label="Imágenes de Cardiología (1 diagnóstico por año)" />
           </div>
           <div className="mb-2 mt-3 text-[13px] font-bold text-ink">Promedio por día</div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <MiniStat icon={Activity} tone="blue" value="850" label="Imágenes de Radiología diarias" />
-            <MiniStat icon={HeartPulse} tone="red" value="431" label="Imágenes de Cardiología diarias" />
+            <MiniStat icon={Activity} tone="blue" value={v('850')} label="Imágenes de Radiología diarias" />
+            <MiniStat icon={HeartPulse} tone="red" value={v('431')} label="Imágenes de Cardiología diarias" />
           </div>
         </Panel>
 
         <Panel className="xl:col-span-4" title="Recursos humanos requeridos" icon={UserRound} action={<MoreLink boxed />}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <MiniStat icon={Users} tone="green" value="10" label="Radiólogos requeridos (5 min x estudio)" />
-            <MiniStat icon={Stethoscope} tone="purple" value="18" label="Cardiólogos / Internistas requeridos (10 min x estudio)" />
+            <MiniStat icon={Users} tone="green" value={v('10')} label="Radiólogos requeridos (5 min x estudio)" />
+            <MiniStat icon={Stethoscope} tone="purple" value={v('18')} label="Cardiólogos / Internistas requeridos (10 min x estudio)" />
           </div>
           <div className="mb-1 mt-3 text-[13px] font-bold text-ink">Requerimiento por región (radiólogos)</div>
+          {supabaseConfigurado ? <Vacio className="!min-h-[118px]" /> : (<>
           <div className="grid h-[118px] grid-cols-5 items-end gap-2 border-b border-[#e6edf8] px-1">
             {reqRegion.map((r, i) => (
               <div key={r.label} className="flex h-full flex-col items-center justify-end">
@@ -258,10 +289,11 @@ export default function Analitica() {
           <div className="mt-1 grid grid-cols-5 gap-2 text-center text-[10.5px] leading-tight text-ink/80">
             {reqRegion.map((r) => <span key={r.label}>{r.label}</span>)}
           </div>
+          </>)}
         </Panel>
 
         <Panel className="lg:col-span-2 xl:col-span-4" title="Distribución de imágenes por provincia" icon={MapPin} action={<MoreLink boxed />}>
-          <HBarList rows={imgProvincia} max={150000} />
+          {supabaseConfigurado ? <Vacio /> : <HBarList rows={imgProvincia} max={150000} />}
         </Panel>
 
         {/* Fila 3 */}

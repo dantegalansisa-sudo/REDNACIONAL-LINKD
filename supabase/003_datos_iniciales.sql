@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RedNacionalSalud.do — 003 DATOS INICIALES
--- Provincias (32), municipios principales, hospitales de ejemplo,
+-- Provincias (32), municipios principales,
 -- configuración por defecto y permisos por rol.
 -- Ejecutar DESPUÉS de 002_seguridad.sql
 -- =====================================================================
@@ -62,19 +62,8 @@ insert into public.municipios (provincia_id, nombre) values
   (32, 'Cotuí')
 on conflict do nothing;
 
--- Hospitales de ejemplo (los del panel). Reemplazar por el listado oficial.
-insert into public.hospitales (codigo, sigla, nombre, tipo, nivel, provincia_id, municipio, direccion, telefono, correo, servicios, estado) values
-  ('H-001', 'HPHM', 'Hospital Pediátrico Hugo Mendoza',       'Hospital Especializado Pediátrico', 'III', 2,  'Santo Domingo Oeste',     'Av. San Vicente de Paúl esq. Carretera Los Alcarrizos', '809-530-1180', 'info@hugomendoza.gob.do',     '{RX,CT,MR,US,MG}', 'activo'),
-  ('H-002', 'HMV',  'Hospital Dr. Marcelino Vélez',           'Hospital General Docente',          'III', 2,  'Santo Domingo Oeste',     'Av. Isabel Aguiar, Herrera',                            '809-530-6969', 'info@marcelinovelez.gob.do',  '{RX,CT,US}',       'activo'),
-  ('H-003', 'HPB',  'Hospital Padre Billini',                 'Hospital General Docente',          'III', 1,  'Distrito Nacional',       'Calle Santomé No. 39, Ciudad Colonial',                 '809-333-5656', 'info@padrebillini.gob.do',    '{RX,CT,US,MG}',    'activo'),
-  ('H-004', 'HFMP', 'Hospital Dr. Francisco Moscoso Puello',  'Hospital General Docente',          'III', 1,  'Distrito Nacional',       'Av. Nicolás de Ovando, Cristo Rey',                     '809-681-6922', 'info@moscosopuello.gob.do',   '{RX,CT,US}',       'activo'),
-  ('H-005', 'HNAL', 'Hospital Traumatológico Ney Arias Lora', 'Hospital Especializado',            'III', 2,  'Santo Domingo Norte',     'Autopista Duarte Km 10 ½, Ciudad Juan Bosch',           '809-948-7777', 'info@neyariaslora.gob.do',    '{RX,CT,MR,US}',    'activo'),
-  ('H-006', 'HJPP', 'Hospital Juan Pablo Pina',               'Hospital General',                  'II',  4,  'San Cristóbal',           'Av. Constitución, San Cristóbal',                       '809-528-3361', 'info@juanpablopina.gob.do',   '{RX,US}',          'activo'),
-  ('H-007', 'HRT',  'Hospital Regional Taiwán 19 de Marzo',   'Hospital General',                  'II',  23, 'Azua',                    'Carretera Sánchez, Azua de Compostela',                 '809-521-3335', 'info@hospitaltaiwan.gob.do',  '{RX,CT,US}',       'activo'),
-  ('H-008', 'HRSJ', 'Hospital Regional San Juan de la Maguana','Hospital General',                 'II',  24, 'San Juan de la Maguana',  'Calle Independencia, San Juan de la Maguana',           '809-557-2210', 'info@hrsanjuan.gob.do',       '{RX,CT,US}',       'activo'),
-  ('H-009', 'HAC',  'Hospital Dr. Alejandro Cabral',          'Hospital General',                  'II',  24, 'San Juan de la Maguana',  'Av. Anacaona, San Juan de la Maguana',                  '809-557-2040', 'info@alejandrocabral.gob.do', '{RX,US}',          'en_proceso'),
-  ('H-010', 'HRAM', 'Hospital Regional Antonio Musa',         'Hospital General',                  'II',  20, 'San Pedro de Macorís',    'Av. Independencia, San Pedro de Macorís',               '809-529-3567', 'info@antoniomusa.gob.do',     '{RX,CT,US,MG}',    'activo')
-on conflict (codigo) do nothing;
+-- Hospitales: el sistema arranca SIN hospitales. Se registran desde el panel
+-- (Hospitales → Registrar hospital) con el listado oficial del SNS.
 
 -- Configuración general (la edita el administrador desde Configuración)
 insert into public.configuracion (clave, valor, descripcion) values
@@ -108,7 +97,6 @@ commit;
 -- VERIFICACIÓN (ejecutar aparte; todos los conteos deben ser > 0)
 -- =====================================================================
 -- select (select count(*) from public.provincias)    as provincias,    -- 32
---        (select count(*) from public.hospitales)    as hospitales,    -- 10
 --        (select count(*) from public.configuracion) as configuracion, -- 8
 --        (select count(*) from public.rol_permisos)  as permisos,
 --        (select count(*) from storage.buckets where id in ('documentos-medicos','fotos-perfil','informes','estudios-miniaturas','institucional')) as buckets; -- 5

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 import {
   Bell, Building2, ChevronDown, Clock, Database, Download, HardDrive, Link2, Palette, RefreshCw, Save, Settings,
   ShieldCheck, SlidersHorizontal, Upload, Wrench, Info, BellRing, Mail, MessageSquare, Smartphone, type LucideIcon,
@@ -6,15 +6,65 @@ import {
 import { Badge, DotsButton, Kpi, Modal, PageHeader, Panel, Select, Table, Tabs, Toggle, clsx, type Tone } from '../../components/ui'
 import { RnsLogo } from '../../components/Logo'
 import { BRAND } from '../../config/brand'
+import { supabase } from '../../lib/supabase'
+import { num, supabaseConfigurado, useDatos } from '../../lib/admin-data'
+
+/* =====================================================================
+ * Datos reales (Supabase): tabla `configuracion` (clave → valor jsonb).
+ * Sin Supabase configurado el contexto es null y todo usa los datos de ejemplo.
+ * ===================================================================== */
+type Valor = Record<string, unknown>
+type ConfigCtx = { cfg: Record<string, Valor>; guardar: (clave: string, valor: Valor) => Promise<void> }
+const Ctx = createContext<ConfigCtx | null>(null)
+const useConfig = () => useContext(Ctx)
+const str = (v: unknown, def = '') => (v === undefined || v === null ? def : String(v))
+
+async function fetchConfiguracion(): Promise<{ cfg: Record<string, Valor>; hospitales: number }> {
+  const [c, h] = await Promise.all([
+    supabase.from('configuracion').select('clave, valor'),
+    supabase.from('hospitales').select('id', { count: 'exact', head: true }),
+  ])
+  if (c.error) throw new Error(c.error.message)
+  const cfg = Object.fromEntries(((c.data ?? []) as { clave: string; valor: Valor }[]).map((r) => [r.clave, r.valor ?? {}]))
+  return { cfg, hospitales: h.error ? 0 : h.count ?? 0 }
+}
+
+async function guardarClave(clave: string, valor: Valor) {
+  const { data, error } = await supabase.from('configuracion').update({ valor }).eq('clave', clave).select('clave')
+  if (error) throw new Error(error.message)
+  if (!data?.length) throw new Error('No tiene permisos para modificar la configuración')
+}
+
+/** Opciones de un select que siempre incluyen el valor guardado */
+const conActual = (actual: string, opciones: string[]) => (actual && !opciones.includes(actual) ? [actual, ...opciones] : opciones)
+const ZONAS: [string, string][] = [['America/Santo_Domingo', '(UTC-04:00) Santo Domingo'], ['America/Bogota', '(UTC-05:00) Bogotá'], ['America/Caracas', '(UTC-04:00) Caracas']]
+const IDIOMAS: [string, string][] = [['es-DO', 'Español (República Dominicana)'], ['en-US', 'English (United States)']]
+const TEMAS: [string, string][] = [['claro', 'Claro (por defecto)'], ['oscuro', 'Oscuro'], ['automatico', 'Automático']]
+const etiqueta = (pares: [string, string][], v: string) => pares.find((p) => p[0] === v)?.[1] ?? v
+const valorDe = (pares: [string, string][], e: string) => pares.find((p) => p[1] === e)?.[0] ?? e
 
 /* ---------- Helpers ---------- */
-function SaveButton({ label = 'Guardar cambios', className }: { label?: string; className?: string }) {
+function SaveButton({ label = 'Guardar cambios', className, onSave }: { label?: string; className?: string; onSave?: () => Promise<void> }) {
   const [ok, setOk] = useState(false)
-  return (
-    <button type="button" onClick={() => { setOk(true); setTimeout(() => setOk(false), 1800) }}
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+  const click = async () => {
+    if (!onSave) { setOk(true); setTimeout(() => setOk(false), 1800); return }
+    setGuardando(true); setError('')
+    try { await onSave(); setOk(true); setTimeout(() => setOk(false), 1800) } catch (e) { setError((e as Error).message) } finally { setGuardando(false) }
+  }
+  const boton = (
+    <button type="button" onClick={click} disabled={guardando}
       className={clsx('btn-primary py-1.5', ok && '!bg-emerald-600', className)}>
-      <Save size={16} /> {ok ? 'Cambios guardados' : label}
+      <Save size={16} /> {guardando ? 'Guardando…' : ok ? 'Cambios guardados' : label}
     </button>
+  )
+  if (!onSave) return boton
+  return (
+    <span className="inline-flex flex-col items-end gap-1">
+      {boton}
+      {error && <span className="text-[11.5px] text-red-600">{error}</span>}
+    </span>
   )
 }
 
@@ -67,7 +117,36 @@ const PARAMS = [
 ]
 
 /* ---------- Bloques ---------- */
+function InfoPlataformaReal({ ctx }: { ctx: ConfigCtx }) {
+  const p = ctx.cfg.plataforma ?? {}
+  const [f, setF] = useState({
+    nombre: str(p.nombre, BRAND.domain), siglas: str(p.siglas, BRAND.short), descripcion: str(p.descripcion),
+    zona_horaria: str(p.zona_horaria, 'America/Santo_Domingo'), idioma: str(p.idioma, 'es-DO'),
+  })
+  const set = (k: keyof typeof f) => (v: string) => setF({ ...f, [k]: v })
+  const zonas = conActual(etiqueta(ZONAS, f.zona_horaria), ZONAS.map((z) => z[1]))
+  const idiomas = conActual(etiqueta(IDIOMAS, f.idioma), IDIOMAS.map((z) => z[1]))
+  return (
+    <Panel title="Información de la plataforma" icon={Building2}>
+      <div className="space-y-2.5">
+        <div className="grid grid-cols-1 items-center gap-1 sm:grid-cols-[150px_1fr_auto_110px] sm:gap-3">
+          <span className="text-[12.5px] text-ink/80">Nombre de la plataforma</span>
+          <input className="input" value={f.nombre} onChange={(e) => set('nombre')(e.target.value)} />
+          <span className="text-[12.5px] text-ink/80">Siglas</span>
+          <input className="input" value={f.siglas} onChange={(e) => set('siglas')(e.target.value)} />
+        </div>
+        <FieldRow label="Descripción"><textarea className="input min-h-[46px] resize-none" value={f.descripcion} onChange={(e) => set('descripcion')(e.target.value)} /></FieldRow>
+        <FieldRow label="Zona horaria"><Select options={zonas} value={etiqueta(ZONAS, f.zona_horaria)} onChange={(v) => set('zona_horaria')(valorDe(ZONAS, v))} /></FieldRow>
+        <FieldRow label="Idioma"><Select options={idiomas} value={etiqueta(IDIOMAS, f.idioma)} onChange={(v) => set('idioma')(valorDe(IDIOMAS, v))} /></FieldRow>
+        <div className="flex justify-end pt-1"><SaveButton onSave={() => ctx.guardar('plataforma', { ...p, ...f })} /></div>
+      </div>
+    </Panel>
+  )
+}
+
 function InfoPlataforma() {
+  const ctx = useConfig()
+  if (ctx) return <InfoPlataformaReal ctx={ctx} />
   return (
     <Panel title="Información de la plataforma" icon={Building2}>
       <div className="space-y-2.5">
@@ -87,6 +166,8 @@ function InfoPlataforma() {
 }
 
 function IntegracionesTabla({ full = false }: { full?: boolean }) {
+  // En producción aún no hay integraciones conectadas: se listan los sistemas como pendientes
+  const real = useConfig() !== null
   return (
     <Table>
       <thead>
@@ -98,9 +179,9 @@ function IntegracionesTabla({ full = false }: { full?: boolean }) {
         {INTEGRACIONES.map((i) => (
           <tr key={i.sistema} className="tr">
             <td className="td whitespace-nowrap py-1.5 text-ink">{i.sistema}</td>
-            {full && <><td className="td py-1.5">{i.tipo}</td><td className="td py-1.5 font-mono text-[11.5px]">{i.endpoint}</td></>}
-            <td className="td py-1.5"><Badge tone={i.tone} icon={i.tone === 'green'}>{i.estado}</Badge></td>
-            <td className="td whitespace-nowrap py-1.5">{i.fecha}</td>
+            {full && <><td className="td py-1.5">{i.tipo}</td><td className="td py-1.5 font-mono text-[11.5px]">{real ? '—' : i.endpoint}</td></>}
+            <td className="td py-1.5">{real ? <Badge tone="orange">Pendiente</Badge> : <Badge tone={i.tone} icon={i.tone === 'green'}>{i.estado}</Badge>}</td>
+            <td className="td whitespace-nowrap py-1.5">{real ? '—' : i.fecha}</td>
             <td className="td py-1.5"><DotsButton /></td>
           </tr>
         ))}
@@ -109,8 +190,13 @@ function IntegracionesTabla({ full = false }: { full?: boolean }) {
   )
 }
 
+const NOTIF_CLAVES = ['correo', 'estudios_criticos', 'asignacion_estudios', 'informes_completados', 'sistema']
+
 function Notificaciones({ title = 'Configuración de notificaciones' }: { title?: string }) {
-  const [state, setState] = useState(NOTIFS.map((n) => n.on))
+  const ctx = useConfig()
+  const guardadas = ctx?.cfg.notificaciones ?? {}
+  const [state, setState] = useState(NOTIFS.map((n, i) => (ctx ? Boolean(guardadas[NOTIF_CLAVES[i]]) : n.on)))
+  const onSave = ctx ? () => ctx.guardar('notificaciones', { ...guardadas, ...Object.fromEntries(NOTIF_CLAVES.map((k, i) => [k, state[i]])) }) : undefined
   return (
     <Panel title={title} icon={Bell}>
       <ul className="divide-y divide-transparent">
@@ -119,12 +205,39 @@ function Notificaciones({ title = 'Configuración de notificaciones' }: { title?
             onChange={(v) => setState(state.map((s, j) => (j === i ? v : s)))} />
         ))}
       </ul>
-      <div className="flex justify-end pt-1"><SaveButton /></div>
+      <div className="flex justify-end pt-1"><SaveButton onSave={onSave} /></div>
+    </Panel>
+  )
+}
+
+const TIEMPO_CLAVES = ['emergencia', 'urgencia', 'hospitalizado', 'ambulatorio']
+const TIEMPO_OPCIONES = [
+  ['15 minutos', '30 minutos', '60 minutos'], ['1 hora', '2 horas', '4 horas'], ['12 horas', '24 horas', '48 horas', '72 horas'], ['3 días', '7 días', '15 días'],
+]
+
+function ParametrosReal({ ctx }: { ctx: ConfigCtx }) {
+  const t = ctx.cfg.tiempos_objetivo ?? {}
+  const [vals, setVals] = useState(TIEMPO_CLAVES.map((k, i) => str(t[k], TIEMPO_OPCIONES[i][1])))
+  return (
+    <Panel title="Parámetros clínicos" icon={SlidersHorizontal}>
+      <div className="space-y-2.5">
+        {PARAMS.map((p, i) => (
+          <div key={p.label} className="grid grid-cols-1 items-center gap-1 sm:grid-cols-[1fr_minmax(160px,0.85fr)] sm:gap-3">
+            <span className="text-[12.5px] text-ink/80">{p.label}</span>
+            <Select options={conActual(vals[i], TIEMPO_OPCIONES[i])} value={vals[i]} onChange={(v) => setVals(vals.map((x, j) => (j === i ? v : x)))} />
+          </div>
+        ))}
+        <div className="flex justify-end pt-1">
+          <SaveButton onSave={() => ctx.guardar('tiempos_objetivo', { ...t, ...Object.fromEntries(TIEMPO_CLAVES.map((k, i) => [k, vals[i]])) })} />
+        </div>
+      </div>
     </Panel>
   )
 }
 
 function Parametros() {
+  const ctx = useConfig()
+  if (ctx) return <ParametrosReal ctx={ctx} />
   return (
     <Panel title="Parámetros clínicos" icon={SlidersHorizontal}>
       <div className="space-y-2.5">
@@ -141,16 +254,19 @@ function Parametros() {
 }
 
 function Mantenimiento() {
-  const [backup, setBackup] = useState(true)
+  const ctx = useConfig()
+  const resp = ctx?.cfg.respaldo
+  const [backup, setBackup] = useState(resp ? Boolean(resp.automatico) : true)
   const [maint, setMaint] = useState(false)
+  const conservacion = resp?.conservacion_dias ? `${str(resp.conservacion_dias)} días` : ''
   return (
     <Panel title="Mantenimiento y respaldo" icon={Database}>
       <ul>
-        <ToggleRow icon={ShieldCheck} title="Respaldo automático de la base de datos" desc="Último respaldo: 15/03/2025 02:00 a. m." on={backup} onChange={setBackup} />
+        <ToggleRow icon={ShieldCheck} title="Respaldo automático de la base de datos" desc={ctx ? (resp?.hora ? `Programado diariamente a las ${str(resp.hora)}` : 'Sin programación') : 'Último respaldo: 15/03/2025 02:00 a. m.'} on={backup} onChange={setBackup} />
         <li className="flex flex-wrap items-center gap-3 py-2">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center text-brand-600"><Settings size={17} /></span>
           <span className="flex-1 text-[12.5px] font-medium text-ink">Conservación de respaldos</span>
-          <Select options={['30 días', '60 días', '90 días', '180 días']} className="w-full sm:w-[280px]" />
+          <Select options={conActual(conservacion, ['30 días', '60 días', '90 días', '180 días'])} value={conservacion || undefined} className="w-full sm:w-[280px]" />
         </li>
         <ToggleRow icon={ShieldCheck} title="Modo de mantenimiento" desc="Solo administradores pueden acceder al sistema" on={maint} onChange={setMaint} />
       </ul>
@@ -159,12 +275,15 @@ function Mantenimiento() {
 }
 
 function Apariencia() {
-  const [color, setColor] = useState('#0d6efd')
+  const ctx = useConfig()
+  const ap = ctx?.cfg.apariencia ?? {}
+  const [color, setColor] = useState(ctx ? str(ap.color_principal, '#0d6efd') : '#0d6efd')
+  const [tema, setTema] = useState(etiqueta(TEMAS, str(ap.tema, 'claro')))
   const [logoModal, setLogoModal] = useState(false)
   return (
     <Panel title="Apariencia y visualización" icon={Palette}>
       <div className="space-y-3">
-        <FieldRow label="Tema del sistema"><Select options={['Claro (por defecto)', 'Oscuro', 'Automático']} className="max-w-[280px]" /></FieldRow>
+        <FieldRow label="Tema del sistema"><Select options={conActual(tema, TEMAS.map((x) => x[1]))} value={tema} onChange={setTema} className="max-w-[280px]" /></FieldRow>
         <FieldRow label="Logo institucional">
           <div className="flex flex-wrap items-center gap-4">
             <RnsLogo className="h-11 w-auto" />
@@ -177,7 +296,7 @@ function Apariencia() {
             <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="absolute left-2 h-5 w-5 cursor-pointer rounded border-0 bg-transparent p-0" />
             <input className="input pl-9" value={color} onChange={(e) => setColor(e.target.value)} />
           </label>
-          <SaveButton />
+          <SaveButton onSave={ctx ? () => ctx.guardar('apariencia', { ...ap, color_principal: color, tema: valorDe(TEMAS, tema) }) : undefined} />
         </div>
       </div>
       <Modal open={logoModal} onClose={() => setLogoModal(false)} className="max-w-[460px]">
@@ -255,6 +374,8 @@ function IntegracionesTab() {
 }
 
 function NotificacionesTab() {
+  const ctx = useConfig()
+  const remitente = ctx ? str(ctx.cfg.correo_remitente?.correo, BRAND.supportEmail) : BRAND.supportEmail
   const [canales, setCanales] = useState({ email: true, sms: false, push: true, inapp: true })
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
@@ -262,7 +383,7 @@ function NotificacionesTab() {
       <div className="flex flex-col gap-4 xl:col-span-5">
         <Panel title="Canales de envío" icon={BellRing}>
           <ul>
-            <ToggleRow icon={Mail} title="Correo electrónico" desc={`Remitente: ${BRAND.supportEmail}`} on={canales.email} onChange={(v) => setCanales({ ...canales, email: v })} />
+            <ToggleRow icon={Mail} title="Correo electrónico" desc={`Remitente: ${remitente}`} on={canales.email} onChange={(v) => setCanales({ ...canales, email: v })} />
             <ToggleRow icon={Smartphone} title="SMS" desc="Solo para estudios críticos" on={canales.sms} onChange={(v) => setCanales({ ...canales, sms: v })} />
             <ToggleRow icon={BellRing} title="Notificaciones push" desc="Aplicación móvil del radiólogo" on={canales.push} onChange={(v) => setCanales({ ...canales, push: v })} />
             <ToggleRow icon={Bell} title="Notificaciones en la plataforma" desc="Campana de alertas del panel" on={canales.inapp} onChange={(v) => setCanales({ ...canales, inapp: v })} />
@@ -320,7 +441,8 @@ function ParametrosTab() {
 
 function MantenimientoTab() {
   const [running, setRunning] = useState(false)
-  const respaldos = [
+  const real = useConfig() !== null
+  const respaldos = real ? [] : [
     ['15/03/2025 02:00 a. m.', 'Automático', '48.2 GB', 'Completado'],
     ['14/03/2025 02:00 a. m.', 'Automático', '48.0 GB', 'Completado'],
     ['13/03/2025 02:00 a. m.', 'Automático', '47.8 GB', 'Completado'],
@@ -346,6 +468,7 @@ function MantenimientoTab() {
         <Table>
           <thead><tr className="bg-[#f5f8fd]">{['Fecha', 'Tipo', 'Tamaño', 'Estado', 'Acciones'].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
           <tbody>
+            {respaldos.length === 0 && <tr><td colSpan={5} className="td py-8 text-center text-slate-400">Aún no hay respaldos registrados</td></tr>}
             {respaldos.map((r) => (
               <tr key={r[0]} className="tr">
                 <td className="td whitespace-nowrap text-ink">{r[0]}</td>
@@ -366,6 +489,12 @@ function MantenimientoTab() {
 export default function Configuracion() {
   const [tab, setTab] = useState(0)
   const [exportOpen, setExportOpen] = useState(false)
+  const { datos, cargando, error, recargar } = useDatos(fetchConfiguracion, { cfg: {} as Record<string, Valor>, hospitales: 0 })
+  const ctx: ConfigCtx | null = supabaseConfigurado
+    ? { cfg: datos.cfg, guardar: async (clave, valor) => { await guardarClave(clave, valor); await recargar() } }
+    : null
+  const v = (n: number) => (cargando ? '…' : num(n))
+  const respaldo = datos.cfg.respaldo
 
   return (
     <div>
@@ -389,13 +518,24 @@ export default function Configuracion() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <Kpi icon={Building2} tone="blue" value="128" label="Hospitales configurados" />
-        <Kpi icon={Database} tone="blue" value="6" label="Integraciones activas" />
-        <Kpi icon={Settings} tone="blue" value="12" label="Parámetros del sistema" />
-        <Kpi icon={ShieldCheck} tone="blue" value="3" label="Políticas de seguridad" />
-        <Kpi icon={Clock} tone="blue" value="1" label="Respaldo programado" sub="Diario - 02:00 a. m." />
-      </div>
+      {supabaseConfigurado ? (
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <Kpi icon={Building2} tone="blue" value={v(datos.hospitales)} label="Hospitales configurados" />
+          <Kpi icon={Database} tone="blue" value="0" label="Integraciones activas" sub="Pendientes de conexión" />
+          <Kpi icon={Settings} tone="blue" value={v(Object.keys(datos.cfg).length)} label="Parámetros del sistema" />
+          <Kpi icon={ShieldCheck} tone="blue" value={v(Object.keys(datos.cfg.seguridad ?? {}).length)} label="Políticas de seguridad" />
+          <Kpi icon={Clock} tone="blue" value={cargando ? '…' : respaldo?.automatico ? '1' : '0'} label="Respaldo programado"
+            sub={respaldo?.automatico && respaldo.hora ? `Diario - ${str(respaldo.hora)}` : 'Sin programar'} />
+        </div>
+      ) : (
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <Kpi icon={Building2} tone="blue" value="128" label="Hospitales configurados" />
+          <Kpi icon={Database} tone="blue" value="6" label="Integraciones activas" />
+          <Kpi icon={Settings} tone="blue" value="12" label="Parámetros del sistema" />
+          <Kpi icon={ShieldCheck} tone="blue" value="3" label="Políticas de seguridad" />
+          <Kpi icon={Clock} tone="blue" value="1" label="Respaldo programado" sub="Diario - 02:00 a. m." />
+        </div>
+      )}
 
       <div className="card mb-4 px-3">
         <Tabs size="md" active={tab} onChange={setTab} className="border-b-0"
@@ -405,11 +545,21 @@ export default function Configuracion() {
           ]} />
       </div>
 
-      {tab === 0 && <GeneralTab />}
-      {tab === 1 && <IntegracionesTab />}
-      {tab === 2 && <NotificacionesTab />}
-      {tab === 3 && <ParametrosTab />}
-      {tab === 4 && <MantenimientoTab />}
+      {supabaseConfigurado && ((cargando && !Object.keys(datos.cfg).length) || error) ? (
+        <div className="card px-4 py-10 text-center text-[13px]">
+          {cargando ? <span className="text-slate-400">Cargando configuración…</span> : (
+            <span className="text-red-600">No se pudo cargar la configuración: {error} <button onClick={recargar} className="ml-2 font-semibold text-brand-600 hover:underline">Reintentar</button></span>
+          )}
+        </div>
+      ) : (
+        <Ctx.Provider value={ctx}>
+          {tab === 0 && <GeneralTab />}
+          {tab === 1 && <IntegracionesTab />}
+          {tab === 2 && <NotificacionesTab />}
+          {tab === 3 && <ParametrosTab />}
+          {tab === 4 && <MantenimientoTab />}
+        </Ctx.Provider>
+      )}
     </div>
   )
 }
