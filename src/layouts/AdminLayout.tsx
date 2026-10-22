@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import {
   Activity, Bell, Building2, CalendarCheck, ChevronDown, CircleHelp, ClipboardList, FileBarChart, FileText,
   Headset, Home, Images, LineChart, LogOut, Megaphone, Menu, Network, Search, Settings, ShieldCheck,
-  SlidersHorizontal, Stethoscope, User, UserRound, Users, X, type LucideIcon,
+  SlidersHorizontal, Stethoscope, Moon, Sun, User, UserRound, Users, X, type LucideIcon,
 } from 'lucide-react'
 import { RnsLogo } from '../components/Logo'
 import { BRAND } from '../config/brand'
@@ -77,12 +77,15 @@ function AdminShell() {
   const [drawer, setDrawer] = useState(false)
   const [help, setHelp] = useState(false)
   const [userMenu, setUserMenu] = useState(false)
+  // El panel abre en modo oscuro; el usuario puede cambiar a modo claro y se recuerda en el navegador
+  const [oscuro, setOscuro] = useState(() => { try { return localStorage.getItem('rns-tema') !== 'claro' } catch { return true } })
+  const cambiarTema = () => setOscuro((o) => { try { localStorage.setItem('rns-tema', o ? 'claro' : 'oscuro') } catch { /* sin almacenamiento */ } return !o })
   const current = [...ADMIN_NAV].reverse().find((n) => pathname === n.to || pathname.startsWith(n.to + '/')) ?? ADMIN_NAV[0]
 
   useEffect(() => { setDrawer(false); setUserMenu(false); window.scrollTo(0, 0) }, [pathname])
 
   return (
-    <div className="admin-scale min-h-screen-z bg-[#f2f6fc] text-ink">
+    <div className={clsx('admin-scale min-h-screen-z bg-[#f2f6fc] text-ink', oscuro && 'admin-dark')}>
       {/* Top bar */}
       <header className="fixed inset-x-0 top-0 z-40 flex h-[60px] items-center gap-3 border-b border-[#e3eaf6] bg-white pr-3 sm:pr-4">
         <div className="flex h-full w-auto shrink-0 items-center gap-2 pl-3 lg:w-[200px] lg:pl-4">
@@ -125,6 +128,12 @@ function AdminShell() {
           </div>
           <button onClick={() => setHelp(true)} className="flex items-center gap-1.5 rounded-lg border border-[#e3eaf6] px-2 py-1.5 text-[12.5px] font-semibold text-brand-700 hover:bg-brand-50">
             <CircleHelp size={22} className="fill-brand-600 text-white" /> <span className="hidden sm:inline">Ayuda</span>
+          </button>
+          <button onClick={cambiarTema} role="switch" aria-checked={oscuro} title={oscuro ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            className={clsx('relative flex h-8 w-[58px] shrink-0 items-center rounded-full border px-1 transition', oscuro ? 'tema-on border-brand-400 bg-navy-800' : 'border-[#d7e1f2] bg-slate-100')}>
+            <Moon size={14} className={clsx('absolute left-2 transition', oscuro ? 'text-brand-200' : 'text-slate-400')} />
+            <Sun size={14} className={clsx('absolute right-2 transition', oscuro ? 'text-slate-500' : 'text-amber-500')} />
+            <span className={clsx('relative z-10 h-6 w-6 rounded-full bg-white shadow transition-transform', oscuro ? 'translate-x-[24px]' : 'translate-x-0')} />
           </button>
         </div>
       </header>

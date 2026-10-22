@@ -8,10 +8,11 @@ import {
 import { Checkbox, Modal, Tabs, clsx } from '../../components/ui'
 import { BRAND } from '../../config/brand'
 import { fetchHospitales, supabaseConfigurado, useDatos } from '../../lib/admin-data'
+import { supabase } from '../../lib/supabase'
 import { useSesion } from '../../lib/session'
 
 /* ---------------- Opciones ---------------- */
-type HospOpt = { n: string; p: string }
+type HospOpt = { n: string; p: string; id?: string }
 /** Solo para el modo demostración; en producción se listan los hospitales reales de la base */
 const MOCK_HOSPITALES: HospOpt[] = [
   { n: 'Hospital Pediátrico Hugo Mendoza', p: 'Santo Domingo, DN' },
@@ -169,15 +170,87 @@ function Radio({ checked, onChange, label }: { checked: boolean; onChange: () =>
 const toggleIn = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
 
 /* ---------------- Wizard ---------------- */
-export function ConvocatoriaWizard({ open, onClose }: { open: boolean; onClose: () => void }) {
-  return open ? <WizardContent onClose={onClose} /> : null
+/* ---------------- Guardado en la base (producción) ---------------- */
+const SERVICIO_DB: Record<string, string> = { 'Teleradiología (remoto)': 'teleradiologia', Presencial: 'presencial', 'Híbrido (remoto/presencial)': 'hibrido' }
+const APLICA_DB = ['todos', 'sin_hospital', 'un_hospital', 'dos_o_mas']
+/** Especialidades del formulario → modalidades de la base (IR = angiografía/intervencionismo, OT = otros) */
+const ESP_DB: Record<string, string> = { CT: 'CT', MR: 'MR', RX: 'RX', US: 'US', MG: 'MG', NM: 'NM', IR: 'XA', OT: 'OTROS' }
+const region = (r: string) => (!r || r === REGIONES[0] ? [] : [r])
+
+/** Convierte el formulario en una fila de `convocatorias` */
+function aFila(f: Form, mensaje: string, hospitales: HospOpt[], estado: 'activa' | 'borrador', userId: string | null) {
+  const idHosp = (n: string) => hospitales.find((h) => h.n === n)?.id ?? null
+  const excluir = idHosp(f.exclusiones)
+  return {
+    titulo: f.titulo.trim(),
+    hospital_id: idHosp(f.hospital),
+    modalidad_servicio: f.servicio.map((s) => SERVICIO_DB[s]).filter(Boolean),
+    descripcion: f.descripcion.trim() || null,
+    posiciones: f.numero,
+    tipo_contratacion: f.tipo || null,
+    aplica_a: APLICA_DB[APLICAR_A.indexOf(f.aplicaA)] ?? 'todos',
+    regiones_interes: region(f.regionInteres),
+    regiones_residencia: region(f.regionViven),
+    excluir_hospitales: excluir ? [excluir] : [],
+    rating_minimo: f.rating,
+    experiencia_minima: f.experiencia || null,
+    especialidades: [...new Set(f.especialidades.map((e) => ESP_DB[e]).filter(Boolean))],
+    requisitos: {
+      lista: [...f.reqDocs, ...(f.otrosDocs && f.otrosDocsTxt.trim() ? [f.otrosDocsTxt.trim()] : [])],
+      documentos_adicionales: f.documentos,
+      otra_especialidad: f.especialidades.includes('OT') ? f.otraEsp.trim() || null : null,
+      nivel: f.nivel,
+      estado_asignacion: f.estadoAsig,
+      disponibilidad_inmediata: f.disponibilidadInm,
+      otros_criterios: f.otrosCrit,
+      ponderacion: CRITERIOS.map((criterio, i) => ({ criterio, peso: f.pesos[i] })),
+    },
+    condiciones: {
+      duracion: f.duracion,
+      modalidad_trabajo: f.modTrabajo,
+      disponibilidad: f.disponibilidad,
+      info_adicional: f.infoAdicional.trim() || null,
+      descripcion_posicion: f.descPosicion.trim() || null,
+      notificaciones: { whatsapp: f.canales.whatsapp, recordatorio: f.recordatorio, mensaje_recordatorio: f.msgRecordatorio.trim() || null },
+    },
+    fecha_inicio: f.inicio || null,
+    fecha_cierre: f.cierre || null,
+    // La base solo admite correo y portal; WhatsApp queda registrado en condiciones.notificaciones
+    canales: [f.canales.email && 'email', f.canales.portal && 'portal'].filter(Boolean),
+    asunto_mensaje: `Nueva convocatoria: ${f.titulo.trim()}`,
+    mensaje,
+    estado,
+    publicada_en: estado === 'activa' ? new Date().toISOString() : null,
+    creado_por: userId,
+  }
 }
 
-function WizardContent({ onClose }: { onClose: () => void }) {
+/** Valida lo mínimo para guardar (borrador) o publicar */
+function validar(f: Form, publicar: boolean): string {
+  if (!f.titulo.trim()) return 'Ingrese el título de la convocatoria.'
+  if (f.inicio && f.cierre && f.cierre < f.inicio) return 'La fecha de cierre no puede ser anterior a la fecha de inicio.'
+  if (!publicar) return ''
+  if (!f.hospital) return 'Seleccione el hospital / centro de salud.'
+  if (!f.servicio.length) return 'Seleccione al menos una modalidad de servicio.'
+  if (!f.descripcion.trim()) return 'Ingrese la descripción de la convocatoria.'
+  if (!f.especialidades.length) return 'Seleccione al menos una especialidad requerida.'
+  if (!f.inicio || !f.cierre) return 'Indique la fecha de inicio y la fecha de cierre.'
+  if (f.pesos.reduce((a, b) => a + b, 0) !== 100) return 'La suma de los criterios de evaluación debe ser 100%.'
+  return ''
+}
+
+export function ConvocatoriaWizard({ open, onClose, onGuardada }: { open: boolean; onClose: () => void; onGuardada?: () => void }) {
+  return open ? <WizardContent onClose={onClose} onGuardada={onGuardada} /> : null
+}
+
+function WizardContent({ onClose, onGuardada }: { onClose: () => void; onGuardada?: () => void }) {
   const [step, setStep] = useState(0)
   const [f, setF] = useState<Form>(INITIAL)
-  const [done, setDone] = useState(false)
+  const [done, setDone] = useState<false | 'activa' | 'borrador'>(false)
   const [toast, setToast] = useState('')
+  const [guardando, setGuardando] = useState<'' | 'activa' | 'borrador'>('')
+  const [error, setError] = useState('')
+  const { sesion } = useSesion()
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((p) => ({ ...p, [k]: v }))
 
   useEffect(() => {
@@ -195,7 +268,7 @@ function WizardContent({ onClose }: { onClose: () => void }) {
   // En producción se ofrecen los hospitales registrados en la base (sin datos de ejemplo)
   const { datos: hospReales } = useDatos(fetchHospitales, [])
   const hospitales: HospOpt[] = useMemo(
-    () => (supabaseConfigurado ? hospReales.map((h) => ({ n: h.nombre, p: h.provincia === '—' ? '' : h.provincia })) : MOCK_HOSPITALES),
+    () => (supabaseConfigurado ? hospReales.map((h) => ({ n: h.nombre, p: h.provincia === '—' ? '' : h.provincia, id: h.id })) : MOCK_HOSPITALES),
     [hospReales])
   const hospitalObj = hospitales.find((h) => h.n === f.hospital)
   const autoMsg = useMemo(() => [
@@ -211,6 +284,22 @@ function WizardContent({ onClose }: { onClose: () => void }) {
   ].join('\n'), [f.hospital, f.cierre])
   const mensaje = f.mensaje ?? autoMsg
 
+  /** Publicar (estado activa) o guardar como borrador; en modo demostración solo simula */
+  async function guardar(estado: 'activa' | 'borrador') {
+    if (!supabaseConfigurado) {
+      if (estado === 'activa') setDone('activa'); else setToast('Borrador guardado correctamente')
+      return
+    }
+    const msg = validar(f, estado === 'activa')
+    if (msg) { setError(msg); return }
+    setGuardando(estado); setError('')
+    const { error: e } = await supabase.from('convocatorias').insert(aFila(f, mensaje, hospitales, estado, sesion?.userId ?? null)).select('id').single()
+    setGuardando('')
+    if (e) { setError(`No se pudo guardar la convocatoria: ${e.message}`); return }
+    onGuardada?.()
+    setDone(estado)
+  }
+
   return (
     <Modal open onClose={onClose} className="max-w-[1000px]" closeOnBackdrop={false}>
       {/* Encabezado */}
@@ -225,9 +314,13 @@ function WizardContent({ onClose }: { onClose: () => void }) {
       {done ? (
         <div className="flex flex-col items-center px-6 pb-12 pt-8 text-center">
           <span className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><CheckCircle2 size={48} /></span>
-          <h3 className="mt-4 text-[22px] font-bold text-ink">¡Convocatoria publicada!</h3>
+          <h3 className="mt-4 text-[22px] font-bold text-ink">{done === 'borrador' ? '¡Borrador guardado!' : '¡Convocatoria publicada!'}</h3>
           <p className="mt-1 max-w-md text-[13.5px] text-slate-600">
-            La convocatoria <b className="text-ink">{f.titulo || 'Nueva convocatoria de radiólogos'}</b> fue publicada y se notificó a los médicos radiólogos que cumplen con los criterios establecidos.
+            {done === 'borrador'
+              ? <>La convocatoria <b className="text-ink">{f.titulo}</b> quedó guardada como borrador. Podrá publicarla desde el listado de convocatorias.</>
+              : supabaseConfigurado
+                ? <>La convocatoria <b className="text-ink">{f.titulo}</b> fue publicada y ya está disponible para los médicos radiólogos en su portal.</>
+                : <>La convocatoria <b className="text-ink">{f.titulo || 'Nueva convocatoria de radiólogos'}</b> fue publicada y se notificó a los médicos radiólogos que cumplen con los criterios establecidos.</>}
           </p>
           <button className="btn-primary mt-6 px-6" onClick={onClose}>Cerrar</button>
         </div>
@@ -262,15 +355,17 @@ function WizardContent({ onClose }: { onClose: () => void }) {
             {step === 4 && <Step5 f={f} hospitalObj={hospitalObj} goEdit={() => setStep(0)} />}
           </div>
 
+          {error && <p className="mx-5 mb-2 rounded-md bg-red-50 px-3 py-2 text-[12.5px] text-red-600" role="alert">{error}</p>}
+
           {/* Pie */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#eef2f8] px-5 py-3.5">
             <button className="btn border border-slate-300 bg-white px-6 text-ink hover:bg-slate-50" onClick={onClose}>Cancelar</button>
             <div className="flex flex-wrap items-center gap-2">
               {step > 0 && <button className="btn-outline px-5" onClick={() => setStep(step - 1)}><ArrowLeft size={17} /> Anterior</button>}
-              <button className="btn-outline px-5" onClick={() => setToast('Borrador guardado correctamente')}><Save size={17} /> Guardar como borrador</button>
+              <button className="btn-outline px-5 disabled:opacity-60" disabled={!!guardando} onClick={() => guardar('borrador')}><Save size={17} /> {guardando === 'borrador' ? 'Guardando…' : 'Guardar como borrador'}</button>
               {step < 4
                 ? <button className="btn-primary px-7" onClick={() => setStep(step + 1)}>Siguiente <ArrowRight size={17} /></button>
-                : <button className="btn-primary px-7" onClick={() => setDone(true)}><Send size={16} /> Publicar convocatoria</button>}
+                : <button className="btn-primary px-7 disabled:opacity-60" disabled={!!guardando} onClick={() => guardar('activa')}><Send size={16} /> {guardando === 'activa' ? 'Publicando…' : 'Publicar convocatoria'}</button>}
             </div>
           </div>
         </>

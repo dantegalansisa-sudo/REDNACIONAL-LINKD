@@ -53,3 +53,107 @@
 @media (min-width: 1024px) and (max-height: 950px) { .ui-compact { zoom: 0.78; } }
 @media (min-width: 1024px) and (max-height: 800px) { .ui-compact { zoom: 0.7; } .portal-compact { zoom: 0.85; } }
 @media (min-width: 1024px) and (max-height: 680px) { .ui-compact { zoom: 0.62; } .portal-compact { zoom: 0.8; } }
+
+/* =====================================================================
+   Panel de administración — MODO OSCURO (por defecto)
+   Se aplica con la clase .admin-dark en el contenedor del panel.
+   Reasigna los colores claros del diseño a la paleta azul marino.
+   ===================================================================== */
+.admin-dark {
+  --d-bg: #050c26;
+  --d-surface: #0a1a46;
+  --d-surface-2: #0d2257;
+  --d-border: rgba(64, 132, 255, 0.28);
+  --d-border-soft: rgba(64, 132, 255, 0.16);
+  --d-text: #eaf1ff;
+  --d-muted: #9db0d8;
+  --d-faint: #7086b5;
+  color-scheme: dark;
+  background: var(--d-bg) !important;
+  color: var(--d-text);
+}
+.admin-dark main {
+  background: radial-gradient(1200px 600px at 70% -10%, rgba(32, 96, 255, 0.18), transparent 60%),
+    linear-gradient(160deg, #061033 0%, #050c26 60%, #04091d 100%) !important;
+}
+/* Barra superior y barra lateral */
+.admin-dark header { background: #071442 !important; border-color: var(--d-border) !important; box-shadow: 0 1px 0 rgba(64,132,255,.25); }
+.admin-dark aside > div { background: linear-gradient(180deg, #071442 0%, #050c26 100%) !important; border-right: 1px solid var(--d-border-soft); }
+
+/* Superficies */
+.admin-dark .bg-white,
+.admin-dark .card { background-color: var(--d-surface) !important; }
+.admin-dark .card { border-color: var(--d-border) !important; box-shadow: 0 0 0 1px rgba(64,132,255,.06), 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(120,170,255,.08); }
+.admin-dark .bg-\[\#f6f9fe\], .admin-dark .bg-\[\#f5f8fd\], .admin-dark .bg-\[\#f8fafe\], .admin-dark .bg-\[\#f7faff\],
+.admin-dark .bg-\[\#f2f6fc\], .admin-dark .bg-\[\#eef4fd\], .admin-dark .bg-\[\#f3f7fe\], .admin-dark .bg-slate-50,
+.admin-dark .bg-slate-100, .admin-dark .bg-\[\#e8eef8\] { background-color: var(--d-surface-2) !important; }
+.admin-dark .bg-brand-50, .admin-dark .bg-brand-50\/40, .admin-dark .bg-brand-50\/60, .admin-dark .bg-brand-50\/70,
+.admin-dark .bg-brand-50\/80, .admin-dark .bg-brand-100 { background-color: rgba(47, 107, 255, 0.16) !important; }
+.admin-dark .hover\:bg-brand-50:hover, .admin-dark .hover\:bg-slate-50:hover, .admin-dark .hover\:bg-slate-100:hover,
+.admin-dark .tr:hover { background-color: rgba(47, 107, 255, 0.14) !important; }
+.admin-dark .\!bg-brand-50 { background-color: rgba(47, 107, 255, 0.22) !important; }
+
+/* Bordes y divisores */
+.admin-dark .border-\[\#eef2f8\], .admin-dark .border-\[\#e6edf8\], .admin-dark .border-\[\#e3eaf6\],
+.admin-dark .border-\[\#d7e1f2\], .admin-dark .border-\[\#dbe5f5\], .admin-dark .border-slate-200,
+.admin-dark .border-brand-100, .admin-dark .tr { border-color: var(--d-border-soft) !important; }
+.admin-dark .border-brand-200, .admin-dark .border-slate-300 { border-color: var(--d-border) !important; }
+.admin-dark .divide-\[\#eef2f8\] > * + * { border-color: var(--d-border-soft) !important; }
+
+/* Texto */
+.admin-dark .text-ink, .admin-dark .text-navy-800, .admin-dark .text-navy-900, .admin-dark h1, .admin-dark h2,
+.admin-dark h3, .admin-dark h4, .admin-dark .card-title { color: var(--d-text) !important; }
+.admin-dark .text-ink\/90, .admin-dark .text-ink\/80, .admin-dark .text-ink\/75, .admin-dark .text-ink\/70,
+.admin-dark .text-slate-600, .admin-dark .text-slate-700 { color: #c7d5f3 !important; }
+.admin-dark .text-slate-500, .admin-dark .text-brand-800\/80, .admin-dark .text-brand-800\/70, .admin-dark .text-brand-800 { color: var(--d-muted) !important; }
+.admin-dark .text-slate-400, .admin-dark .text-slate-300 { color: var(--d-faint) !important; }
+.admin-dark .text-brand-700, .admin-dark .text-brand-600 { color: #5b9bff !important; }
+.admin-dark .th { color: var(--d-muted) !important; }
+.admin-dark .td { color: #c7d5f3; }
+.admin-dark thead { background-color: rgba(47, 107, 255, 0.10) !important; }
+
+/* Formularios */
+.admin-dark .input, .admin-dark .input-ro, .admin-dark select, .admin-dark textarea {
+  background-color: #071438 !important; border-color: var(--d-border) !important; color: var(--d-text) !important;
+}
+.admin-dark .input::placeholder, .admin-dark textarea::placeholder { color: var(--d-faint) !important; }
+.admin-dark .input-ro { color: var(--d-muted) !important; }
+.admin-dark .label { color: #c7d5f3 !important; }
+.admin-dark .btn-outline { background-color: transparent !important; border-color: var(--d-border) !important; color: #8fb6ff !important; }
+.admin-dark .btn-outline:hover { background-color: rgba(47, 107, 255, 0.14) !important; }
+.admin-dark .btn-ghost { color: #8fb6ff !important; }
+.admin-dark .dots-btn { border-color: var(--d-border) !important; color: #8fb6ff !important; }
+.admin-dark .link-more { color: #6ea8ff !important; }
+
+/* Insignias de estado: fondos translúcidos sobre oscuro */
+.admin-dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.16) !important; }
+.admin-dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.16) !important; }
+.admin-dark .bg-orange-50, .admin-dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.16) !important; }
+.admin-dark .bg-violet-50, .admin-dark .bg-violet-100 { background-color: rgba(139, 92, 246, 0.18) !important; }
+.admin-dark .bg-pink-50, .admin-dark .bg-fuchsia-50 { background-color: rgba(236, 72, 153, 0.16) !important; }
+.admin-dark .bg-teal-50, .admin-dark .bg-sky-50 { background-color: rgba(20, 184, 166, 0.16) !important; }
+.admin-dark .bg-amber-100 { background-color: rgba(245, 158, 11, 0.22) !important; }
+.admin-dark .text-emerald-700, .admin-dark .text-emerald-600 { color: #34d399 !important; }
+.admin-dark .text-red-700, .admin-dark .text-red-600 { color: #f87171 !important; }
+.admin-dark .text-orange-600, .admin-dark .text-amber-600, .admin-dark .text-amber-700 { color: #fbbf24 !important; }
+.admin-dark .text-violet-700 { color: #a78bfa !important; }
+.admin-dark .border-red-200, .admin-dark .border-red-100, .admin-dark .border-amber-200, .admin-dark .border-emerald-200 { border-color: rgba(255,255,255,.12) !important; }
+
+/* Gráficos SVG: líneas de cuadrícula y textos */
+.admin-dark svg line[stroke="#eef2f8"] { stroke: rgba(64, 132, 255, 0.18); }
+.admin-dark svg text[fill="#64748b"], .admin-dark svg text[fill="#475569"] { fill: var(--d-muted); }
+.admin-dark svg text[fill="#0a1f5c"] { fill: var(--d-text); }
+.admin-dark svg circle[stroke="#eef2f8"], .admin-dark svg circle[stroke="#e8eef8"] { stroke: rgba(64, 132, 255, 0.16); }
+
+/* Mapa con fondo claro: se integra al tema oscuro */
+.admin-dark img.mix-blend-multiply { mix-blend-mode: normal; filter: brightness(0.9) saturate(1.2); }
+
+/* Modales del panel */
+.admin-dark .rounded-2xl.bg-white { background-color: var(--d-surface) !important; border: 1px solid var(--d-border); }
+.admin-dark .shadow-soft { box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55) !important; }
+.admin-dark .from-brand-50, .admin-dark .from-white { --tw-gradient-from: var(--d-surface) var(--tw-gradient-from-position) !important; --tw-gradient-to: transparent var(--tw-gradient-to-position) !important; }
+.admin-dark .to-white, .admin-dark .to-\[\#eef4ff\], .admin-dark .to-\[\#dfeaff\] { --tw-gradient-to: var(--d-surface-2) var(--tw-gradient-to-position) !important; }
+.admin-dark .via-\[\#f3f7ff\] { --tw-gradient-stops: var(--tw-gradient-from), var(--d-surface-2) var(--tw-gradient-via-position), var(--tw-gradient-to) !important; }
+.admin-dark .from-\[\#eef5ff\] { background-image: none !important; background-color: #071438 !important; }
+.admin-dark header .bg-navy-900 { background-color: #1d4ed8 !important; }
+.admin-dark .tema-on { box-shadow: 0 0 12px rgba(59, 130, 246, 0.6); }
