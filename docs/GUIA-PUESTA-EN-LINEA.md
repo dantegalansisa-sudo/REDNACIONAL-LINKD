@@ -82,7 +82,7 @@ Dime qué pasos salieron bien y cualquier error o aviso. No hagas nada de SMTP c
    | Port | 465 |
    | Username | notificaciones@rednacionalsalud.com |
    | Password | (la contraseña del correo) |
-3. Después del SMTP ya se puede editar la plantilla **Reset Password** (el paso 6 que quedó pendiente): pídele a Claude en Chrome *"haz el PASO 6 del archivo PROMPT-CLAUDE-EN-CHROME.md"* o cópiala de ese archivo.
+3. Después del SMTP ya se puede editar la plantilla **Reset Password** (el paso 6 que quedó pendiente): pídele a Claude en Chrome *"haz el PASO 6 del archivo PROMPT-ASISTENTE-NAVEGADOR.md"* o cópiala de ese archivo.
 4. **Primer administrador:** Authentication → Users → Add user → Create new user (correo + contraseña, marcar *Auto Confirm User*). Luego en SQL Editor:
    ```sql
    update public.profiles set rol = 'admin', nombre_completo = 'Nombre del Administrador'
