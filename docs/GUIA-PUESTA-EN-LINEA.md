@@ -117,7 +117,7 @@ c) Si public_html tiene archivos (por ejemplo index.html, default.htm, cgi-bin),
 
 PASO 3 — Subir la web
 a) Dentro de public_html pulsa "Cargar" / "Upload" y sube el archivo:
-   C:\Users\dante\OneDrive\Desktop\rednacional-linkD\entregables\rns-web-cpanel.zip
+   entregables/rns-web-cpanel.zip (en la carpeta del proyecto)
 b) Cuando termine la carga, vuelve a public_html, selecciona rns-web-cpanel.zip y pulsa "Extraer" / "Extract"
    dentro de public_html (no en una subcarpeta).
 c) Comprueba que en public_html quedaron: index.html, .htaccess, favicon.png y las carpetas assets e img.
